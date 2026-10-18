@@ -1,0 +1,31 @@
+.card {
+  background: var(--surface);
+  padding: 23px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  span {
+    display: block;
+    color: #53665f;
+    font-size: 12px;
+  }
+  strong {
+    display: block;
+    font-size: 38px;
+    font-weight: 550;
+    margin: 10px 0;
+    line-height: 1.1;
+  }
+  small {
+    font-size: 10px;
+    color: var(--muted);
+  }
+}
+.highlighted {
+  background: #eaf1e7;
+  border-color: #d7e2d0;
+}
+@media (max-width: 700px) {
+  .card {
+    padding: 16px;
+  }
+}

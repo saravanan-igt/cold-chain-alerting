@@ -1,0 +1,26 @@
+.badge {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #edf0ee;
+  color: #58645e;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.open {
+  background: #fbe8df;
+  color: #a34525;
+}
+.fresh,
+.recovered {
+  background: #e6f0e6;
+  color: #37724b;
+}
+.stale,
+.pending,
+.future {
+  background: #fbefdb;
+  color: #89621f;
+}

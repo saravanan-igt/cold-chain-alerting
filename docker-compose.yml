@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  coldline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: coldline-app
+    ports:
+      - "8000:8000"
+    environment:
+      # Default predictable login for Docker Desktop demos:
+      - COLDCHAIN_DEMO_PASSWORD=nimbus123
+      # AI API Keys (passes through from host if set, or set them here):
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Preferred AI Provider: 'auto' | 'gemini' | 'anthropic'
+      - AI_PROVIDER=${AI_PROVIDER:-auto}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
+    volumes:
+      # Persistent SQLite database storage on host:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped

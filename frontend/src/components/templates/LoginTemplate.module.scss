@@ -1,0 +1,58 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+}
+.brand {
+  padding: 65px 10%;
+  background: var(--ink);
+  color: #f1f5e9;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  > div:first-child {
+    margin-bottom: 95px;
+  }
+  h1 {
+    font-size: clamp(36px, 4.5vw, 68px);
+    letter-spacing: -2.5px;
+    line-height: 1.12;
+  }
+  p {
+    max-width: 410px;
+    color: #b7cac0;
+    line-height: 1.8;
+    margin-top: 25px;
+  }
+}
+.principles {
+  display: flex;
+  gap: 25px;
+  margin-top: 80px;
+  color: #bdcbb9;
+  font-size: 12px;
+}
+.form {
+  max-width: 410px;
+  align-self: center;
+  padding: 30px;
+  margin: auto;
+  width: 100%;
+}
+@media (max-width: 700px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .brand {
+    padding: 40px;
+    > div:first-child {
+      margin-bottom: 35px;
+    }
+  }
+  .principles {
+    margin-top: 25px;
+  }
+  .form {
+    padding: 35px;
+  }
+}

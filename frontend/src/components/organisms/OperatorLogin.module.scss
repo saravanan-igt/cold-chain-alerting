@@ -1,0 +1,27 @@
+.login {
+  h2 {
+    font-size: 34px;
+    letter-spacing: -1px;
+  }
+  form {
+    margin-top: 40px;
+  }
+  input {
+    padding: 13px;
+  }
+}
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: var(--customer-accent);
+}
+.muted {
+  color: var(--muted);
+}
+.note {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin-top: 30px;
+}

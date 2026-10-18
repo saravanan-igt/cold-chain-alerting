@@ -1,0 +1,37 @@
+:root {
+  --ink: #183b37;
+  --muted: #6c7875;
+  --customer-accent: #17675e;
+  --surface: #fff;
+  --border: #dde4dc;
+}
+body {
+  margin: 0;
+  background: #f4f6f3;
+  color: var(--ink);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+}
+button,
+a,
+input,
+select {
+  &:focus-visible {
+    outline: 3px solid #df9b34 !important;
+    outline-offset: 3px;
+  }
+}
+.btn-primary {
+  --bs-btn-bg: var(--customer-accent);
+  --bs-btn-border-color: var(--customer-accent);
+  --bs-btn-hover-bg: #12554d;
+  --bs-btn-hover-border-color: #12554d;
+  --bs-btn-active-bg: #12554d;
+  --bs-btn-disabled-bg: #587a74;
+  --bs-btn-disabled-border-color: #587a74;
+}
+.route-feedback {
+  max-width: 700px;
+  margin: 15vh auto;
+  padding: 24px;
+}
