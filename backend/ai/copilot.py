@@ -1,128 +1,73 @@
-"""Interactive Operations Copilot Chat Engine using Claude."""
-from __future__ import annotations
-
+"""A tenant-scoped deterministic operations assistant; no external model is called."""
 from typing import Any
 
-from backend.ai.client import invoke_claude
 
-SYSTEM_PROMPT = """You are Coldline AI, an expert Operations Copilot embedded in the Nimbus Freight Operations Center.
-You assist fleet dispatchers, logistics engineers, and quality assurance managers in monitoring refrigerated cargo.
-You have access to real-time fleet telemetry, incident records, and pharmaceutical cold-chain compliance standards (such as GDP - Good Distribution Practice, 2°C to 8°C limits).
-
-Guidelines:
-- Give direct, concise, actionable operational answers.
-- When asked to draft messages to drivers, write crisp, urgent, professional communications.
-- Cite specific truck IDs, temperatures, and timestamps when answering.
-- Explain trade-offs between deterministic threshold rules and physical cargo thermal inertia.
-
-You must respond ONLY with a valid JSON object matching the requested schema. No markdown fences outside the JSON, no commentary."""
-
-
-def cognitive_fallback_chat(
-    message: str,
-    context: dict[str, Any],
-) -> dict[str, Any]:
-    """Generates thoughtful copilot answers when Claude API is not called."""
-    lower = message.lower()
-    trucks = context.get("fleet", {}).get("trucks", [])
+def cognitive_fallback_chat(message: str, context: dict[str, Any]) -> dict[str, Any]:
+    fleet = context.get("fleet", {})
+    trucks = fleet.get("trucks", [])
     incidents = context.get("incidents", [])
+    lowered = message.lower()
+    truck = next(
+        (item for item in trucks if item["id"] == context.get("selected_truck")),
+        None,
+    )
+    if truck is None:
+        truck = next((item for item in trucks if item["id"].lower() in lowered), None)
 
-    if "t-04" in lower or "gap" in lower:
-        return {
-            "reply": (
-                "Regarding Truck T-04: T-04 experienced a 10-minute telemetry blackout between 08:30 (8.9°C) "
-                "and 08:40 (9.1°C). The deterministic rule engine requires continuous readings within 5 minutes, "
-                "so the candidate was technically reset. However, Claude AI thermal analysis confirms continuous "
-                "excursion across the gap with 94% confidence because the reefer unit had already begun thermal runaway "
-                "and reconnected even warmer. Recommendation: Treat T-04 as a verified real alert and quarantine cargo."
-            ),
-            "relevant_trucks": ["T-04"],
-            "suggested_actions": [
-                "Inspect T-04 cargo temperature with handheld probe",
-                "Review cellular connectivity coverage along T-04 route",
-                "Quarantine T-04 shipment for QA inspection",
-            ],
-        }
-
-    if "t-02" in lower or "spike" in lower or "door" in lower:
-        return {
-            "reply": (
-                "Regarding Truck T-02: T-02 recorded a single warm spike of 8.9°C at 08:10 UTC, but immediately "
-                "pulled back down to 6.5°C at 08:15. Claude AI classified this as a TRANSIENT_DOOR_OPENING. "
-                "Because cargo core thermal mass requires sustained ambient exposure to elevate, product integrity "
-                "remains 100% intact. The alert was suppressed to prevent operator fatigue."
-            ),
-            "relevant_trucks": ["T-02"],
-            "suggested_actions": [
-                "No driver intervention needed",
-                "Verify door sensor seal calibration at end-of-day maintenance",
-            ],
-        }
-
-    if "t-03" in lower or "drift" in lower:
-        return {
-            "reply": (
-                "Regarding Truck T-03: T-03 has not breached the 8.0°C safety ceiling, but telemetry shows an insidious "
-                "upward creep from 5.8°C to 7.0°C over 30 minutes. Claude AI flagged this as SUB_THRESHOLD_DRIFT (Predictive Warning). "
-                "This typically indicates a slow refrigerant leak or condenser coil fouling. We recommend proactive maintenance."
-            ),
-            "relevant_trucks": ["T-03"],
-            "suggested_actions": [
-                "Schedule reefer condenser inspection",
-                "Monitor next 3 readings for threshold crossing",
-            ],
-        }
-
-    if "sms" in lower or "script" in lower or "driver" in lower:
-        return {
-            "reply": (
-                "Here is an urgent driver dispatch message:\n\n"
-                "\"NIMBUS DISPATCH URGENT: Driver, your cargo temperature is exceeding threshold. Please pull over safely at the next exit, "
-                "verify the reefer engine is running, confirm setpoint is 4.0°C, and ensure doors are tightly latched. Call dispatch immediately.\""
-            ),
-            "relevant_trucks": [t["id"] for t in trucks if t.get("status") in ("open", "pending")],
-            "suggested_actions": [
-                "Copy message to fleet dispatch terminal",
-                "Follow up with driver phone call if unacknowledged in 5 minutes",
-            ],
-        }
+    if truck:
+        timestamp = truck.get("last_observation_at")
+        temperature = truck.get("temperature_c")
+        reading = (
+            f"The last accepted reading was {temperature} °C at {timestamp}."
+            if temperature is not None and timestamp
+            else "No accepted reading is available."
+        )
+        reply = (
+            f"Truck {truck['id']} is {truck.get('status', 'unknown')} with "
+            f"{truck.get('freshness', 'unknown')} telemetry. {reading} "
+            "The detector reports rule state only; it does not determine equipment cause or cargo disposition."
+        )
+        incident = context.get("selected_incident")
+        if incident:
+            reply += (
+                f" Selected incident {incident['id']} is {incident['lifecycle']}, "
+                f"qualified at {incident['qualified_at']}."
+            )
+        suggestions = [
+            "Check the customer's approved operating procedure.",
+            "Verify sensor connectivity and refrigeration-unit status with dispatch.",
+        ]
+        if any(term in lowered for term in ("sms", "script", "driver", "message")):
+            threshold = truck.get("rule", {}).get("threshold_c")
+            detail = f"configured threshold {threshold} °C" if threshold is not None else "configured temperature rule"
+            reply += (
+                f"\n\nDISPATCH MESSAGE: Please acknowledge the alert for truck {truck['id']}, "
+                f"check the unit and sensor, and follow the approved procedure ({detail}). "
+                "Cargo disposition must be decided by the customer's quality team."
+            )
+    else:
+        open_count = sum(item.get("status") == "open" for item in trucks)
+        pending_count = sum(item.get("status") == "pending" for item in trucks)
+        reply = (
+            f"Fleet {fleet.get('name', fleet.get('tenant', ''))}: {len(trucks)} registered trucks, "
+            f"{open_count} open detector incidents, and {pending_count} pending candidates. "
+            f"{len(incidents)} recent incidents are available. I can summarize recorded readings, "
+            "but cannot infer equipment failure or cargo safety."
+        )
+        suggestions = ["Review open incidents.", "Check telemetry freshness."]
+        if any(term in lowered for term in ("sms", "script", "driver", "message")):
+            reply += (
+                "\n\nDISPATCH MESSAGE: Please confirm the current truck and observation, "
+                "then follow the customer's approved operating procedure. Cargo disposition "
+                "must be decided by the customer's quality team."
+            )
 
     return {
-        "reply": (
-            f"Nimbus Fleet Status: Monitoring {len(trucks)} trucks. {len(incidents)} incidents on record. "
-            f"T-01 and T-05 experienced sustained excursions peaking at 9.6°C. T-04 experienced an unmonitored gap excursion. "
-            f"T-02 experienced a benign door spike. T-03 is showing subtle sub-threshold drift. How can I assist you with dispatch or compliance?"
-        ),
-        "relevant_trucks": [t["id"] for t in trucks],
-        "suggested_actions": [
-            "Run AI Fleet Assessment",
-            "Generate Driver Dispatch Script for T-01",
-            "Evaluate T-04 Gap Excursion Risk",
-        ],
+        "reply": reply,
+        "relevant_trucks": [truck["id"]] if truck else [],
+        "suggested_actions": suggestions,
     }
 
 
-def chat_with_copilot(
-    message: str,
-    context: dict[str, Any],
-) -> dict[str, Any]:
-    """Interacts with Claude AI Copilot for fleet ops."""
-    user_prompt = f"""OPERATOR QUERY:
-"{message}"
-
-CURRENT FLEET AND SYSTEM CONTEXT:
-Fleet: {context.get('fleet')}
-Active / Recent Incidents: {context.get('incidents')}
-Selected Truck (if any): {context.get('selected_truck')}
-
-Please answer the operator's query with operational authority and precision.
-
-Respond with a JSON object strictly having these keys:
-{{
-  "reply": string,
-  "relevant_trucks": [string],
-  "suggested_actions": [string]
-}}"""
-
-    fallback = lambda: cognitive_fallback_chat(message, context)
-    return invoke_claude(SYSTEM_PROMPT, user_prompt, fallback_fn=fallback)
+def chat_with_copilot(message: str, context: dict[str, Any]) -> dict[str, Any]:
+    return cognitive_fallback_chat(message, context)

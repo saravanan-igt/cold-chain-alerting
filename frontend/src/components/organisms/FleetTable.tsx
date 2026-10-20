@@ -18,7 +18,7 @@ export function FleetTable({
     <Panel
       id="fleet"
       title="Fleet watch"
-      description="Latest accepted observation and Claude AI thermal diagnosis for each truck"
+      description="Latest accepted observation, telemetry freshness and deterministic detector state"
       action={
         <Badge bg="light" text="dark">
           {trucks.length} trucks
@@ -36,7 +36,7 @@ export function FleetTable({
                 <th>Telemetry</th>
                 <th>Detector</th>
                 <th>Rule</th>
-                <th>Claude AI Diagnosis</th>
+                <th>Rule summary</th>
               </tr>
             </thead>
             <tbody>
@@ -71,7 +71,7 @@ export function FleetTable({
                         <div>
                           <Badge
                             bg={
-                              ai.ai_severity === "CRITICAL"
+                              ai.ai_severity === "HIGH" || ai.ai_severity === "CRITICAL"
                                 ? "danger"
                                 : ai.ai_severity === "WARNING"
                                   ? "warning"
@@ -93,7 +93,7 @@ export function FleetTable({
                         </div>
                       ) : (
                         <span style={{ color: "#a0aec0", fontSize: "0.8rem" }}>
-                          Nominal
+                          No assessment
                         </span>
                       )}
                     </td>

@@ -1,5 +1,6 @@
 "use client";
 import {
+  coldchainApi,
   useGetFleetQuery,
   useGetIncidentsQuery,
   POLLING_INTERVAL,
@@ -13,15 +14,21 @@ import {
 } from "@/store/dashboard-slice";
 import type { LifecycleFilter } from "@/types/domain";
 
-const polling = {
-  pollingInterval: POLLING_INTERVAL,
-  skipPollingIfUnfocused: true,
-};
+const LIVE_POLLING_INTERVAL = 5_000;
+const selectFleet = coldchainApi.endpoints.getFleet.select();
 
 export function useDashboard() {
   const dispatch = useAppDispatch();
   const lifecycle = useAppSelector((state) => state.dashboard.lifecycle);
   const offset = useAppSelector((state) => state.dashboard.incidentOffset);
+  // Live simulations change every 10 seconds; poll faster so injected scenarios are visible promptly.
+  const live = useAppSelector(
+    (state) => selectFleet(state).data?.demo_mode === "live_simulation",
+  );
+  const polling = {
+    pollingInterval: live ? LIVE_POLLING_INTERVAL : POLLING_INTERVAL,
+    skipPollingIfUnfocused: true,
+  };
   const fleetQuery = useGetFleetQuery(undefined, polling);
   const incidentsQuery = useGetIncidentsQuery({ lifecycle, offset }, polling);
   return {

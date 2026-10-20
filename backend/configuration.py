@@ -11,6 +11,54 @@ class TruckConfig(BaseModel):
     rule: Rule | None = None
 
 
+NotificationEvent = Literal["incident.opened", "incident.recovered", "incident.acknowledged", "incident.escalated"]
+
+
+class ChannelConfig(BaseModel):
+    """A delivery target. Secrets are referenced by environment variable name, never stored."""
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,39}$")
+    type: Literal["log", "webhook"]
+    url: str | None = Field(default=None, pattern=r"^https?://", max_length=2000)
+    secret_env: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]{0,79}$")
+    format: Literal["coldline", "slack"] = "coldline"
+    events: list[NotificationEvent] = Field(default_factory=lambda: ["incident.opened", "incident.recovered"], max_length=4)
+
+    @model_validator(mode="after")
+    def target_required(self):
+        if self.type == "webhook" and not self.url:
+            raise ValueError("Webhook channels require a url")
+        if self.type == "log" and (self.url or self.secret_env):
+            raise ValueError("Log channels do not take a url or secret")
+        return self
+
+
+class EscalationLevel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    after_minutes: float = Field(gt=0, le=1440, allow_inf_nan=False)
+    channels: list[str] = Field(min_length=1, max_length=10)
+
+
+class NotificationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    channels: list[ChannelConfig] = Field(default_factory=list, max_length=10)
+    escalation: list[EscalationLevel] = Field(default_factory=list, max_length=5)
+
+    @model_validator(mode="after")
+    def references(self):
+        ids = [channel.id for channel in self.channels]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Duplicate notification channel id")
+        delays = [level.after_minutes for level in self.escalation]
+        if delays != sorted(set(delays)):
+            raise ValueError("Escalation levels must have strictly increasing after_minutes")
+        for level in self.escalation:
+            unknown = set(level.channels) - set(ids)
+            if unknown:
+                raise ValueError(f"Escalation references unknown channel(s): {sorted(unknown)}")
+        return self
+
+
 class TenantConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(min_length=1, max_length=80)
@@ -18,6 +66,7 @@ class TenantConfig(BaseModel):
     accent: str = Field(default="#17675e", pattern=r"^#[0-9a-fA-F]{6}$")
     demo_mode: Literal["live_simulation"] | None = None
     rule: Rule = Field(default_factory=Rule)
+    notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     trucks: list[TruckConfig] = Field(max_length=1000)
 
     @model_validator(mode="after")

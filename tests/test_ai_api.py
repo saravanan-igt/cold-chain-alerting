@@ -46,6 +46,7 @@ def test_ai_endpoints_and_auth(store):
         assert fleet_res.status_code == 200
         fleet_ai = fleet_res.json()
         assert "fleet_health_score" in fleet_ai
+        assert fleet_ai["fleet_health_score"] is None
         assert len(fleet_ai["truck_assessments"]) > 0
 
         # 4. Incident triage endpoint
@@ -66,6 +67,13 @@ def test_ai_endpoints_and_auth(store):
         eval_data = eval_res.json()
         assert eval_data["truck_id"] == "T-01"
         assert eval_data["is_real_alert"] is True
+        assert eval_data["confidence_score"] is None
+        assert eval_data["cargo_spoilage_risk"] == "NOT_ASSESSED"
+        assert client.post(
+            "/api/v1/ai/evaluate-alert",
+            json={"truck_id": "not-in-this-tenant"},
+            headers={"X-API-Key": "op-key"},
+        ).status_code == 404
 
         # 6. Operations Copilot chat endpoint
         chat_res = client.post(

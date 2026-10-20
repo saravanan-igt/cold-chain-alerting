@@ -1,0 +1,49 @@
+{
+  "tenants": [
+    {
+      "id": "nimbus",
+      "name": "Nimbus Freight",
+      "accent": "#17675e",
+      "rule": {
+        "threshold_c": 8,
+        "sustained_minutes": 10,
+        "max_gap_minutes": 5,
+        "recovery_minutes": 5
+      },
+      "trucks": [
+        {"id": "T-01", "device_id": "sensor-T-01"},
+        {"id": "T-02", "device_id": "sensor-T-02"}
+      ],
+      "notifications": {
+        "channels": [
+          {
+            "id": "ops-webhook",
+            "type": "webhook",
+            "url": "https://alerts.example.com/coldline",
+            "secret_env": "COLDLINE_WEBHOOK_SECRET_NIMBUS",
+            "events": ["incident.opened", "incident.recovered", "incident.acknowledged"]
+          },
+          {
+            "id": "dispatch-slack",
+            "type": "webhook",
+            "format": "slack",
+            "url": "https://hooks.slack.com/services/REPLACE/ME/PLEASE",
+            "events": ["incident.opened", "incident.recovered"]
+          },
+          {
+            "id": "duty-manager-pager",
+            "type": "webhook",
+            "url": "https://pager.example.com/integrations/coldline",
+            "secret_env": "COLDLINE_PAGER_SECRET_NIMBUS",
+            "events": []
+          },
+          {"id": "audit-log", "type": "log", "events": ["incident.opened", "incident.recovered", "incident.acknowledged", "incident.escalated"]}
+        ],
+        "escalation": [
+          {"after_minutes": 15, "channels": ["duty-manager-pager"]},
+          {"after_minutes": 30, "channels": ["duty-manager-pager", "dispatch-slack"]}
+        ]
+      }
+    }
+  ]
+}

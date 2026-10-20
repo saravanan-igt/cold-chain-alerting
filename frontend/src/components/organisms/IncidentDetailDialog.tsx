@@ -6,6 +6,7 @@ import { Timestamp } from "@/components/atoms/Timestamp";
 import { Pagination } from "@/components/molecules/Pagination";
 import { QueryFeedback } from "@/components/molecules/QueryFeedback";
 import { EvidenceChart } from "./EvidenceChart";
+import { IncidentResponsePanel } from "./IncidentResponsePanel";
 import styles from "./IncidentDetailDialog.module.scss";
 
 export function IncidentDetailDialog({
@@ -18,6 +19,9 @@ export function IncidentDetailDialog({
   onClose,
   onPage,
   onRetry,
+  onAcknowledge,
+  acknowledging = false,
+  acknowledgeError,
 }: {
   detail?: IncidentDetail;
   open: boolean;
@@ -28,6 +32,9 @@ export function IncidentDetailDialog({
   onClose: () => void;
   onPage: (offset: number) => void;
   onRetry: () => void;
+  onAcknowledge?: (note: string) => void;
+  acknowledging?: boolean;
+  acknowledgeError?: string;
 }) {
   return (
     <Modal
@@ -79,10 +86,20 @@ export function IncidentDetailDialog({
               </div>
             </dl>
 
+            {onAcknowledge && (
+              <IncidentResponsePanel
+                key={detail.id}
+                detail={detail}
+                acknowledging={acknowledging}
+                error={acknowledgeError}
+                onAcknowledge={onAcknowledge}
+              />
+            )}
+
             {detail.ai_evaluation && (
               <div className={styles.aiPanel}>
                 <h3>
-                  <span>Claude AI Diagnostic Verdict</span>
+                  <span>Rule-based review</span>
                   <span
                     className={
                       detail.ai_evaluation.is_real_alert
@@ -91,23 +108,21 @@ export function IncidentDetailDialog({
                     }
                   >
                     {detail.ai_evaluation.is_real_alert
-                      ? "Genuine Alert"
-                      : "Benign Event"}{" "}
-                    ({Math.round(detail.ai_evaluation.confidence_score * 100)}%)
+                      ? "Rule qualified"
+                      : "No qualified excursion"}
                   </span>
                 </h3>
                 <p style={{ margin: "8px 0", fontSize: "13px" }}>
-                  <strong>Classification:</strong>{" "}
+                  <strong>Observed pattern:</strong>{" "}
                   {detail.ai_evaluation.alert_category.replace(/_/g, " ")} ·{" "}
-                  <strong>Cargo Spoilage Risk:</strong>{" "}
-                  {detail.ai_evaluation.cargo_spoilage_risk}
+                  <strong>Cargo impact:</strong> Not assessed
                 </p>
                 <p style={{ margin: "6px 0", fontSize: "12px", color: "#334155" }}>
-                  <strong>Root Cause:</strong>{" "}
+                  <strong>Cause:</strong>{" "}
                   {detail.ai_evaluation.root_cause_hypothesis}
                 </p>
                 <p style={{ margin: "6px 0", fontSize: "12px", color: "#334155" }}>
-                  <strong>Thermal Inertia:</strong>{" "}
+                  <strong>Measurement limitation:</strong>{" "}
                   {detail.ai_evaluation.thermal_inertia_analysis}
                 </p>
 
@@ -121,7 +136,7 @@ export function IncidentDetailDialog({
                         color: "#17675e",
                       }}
                     >
-                      Driver Dispatch Communication Script
+                      Dispatch message template — review before sending
                     </h4>
                     <div className={styles.scriptBox}>
                       {detail.ai_triage.driver_dispatch_script}
@@ -148,7 +163,7 @@ export function IncidentDetailDialog({
                         color: "#17675e",
                       }}
                     >
-                      Recommended Operations SOP Actions
+                      Operational checks
                     </h4>
                     <ul className={styles.sopList}>
                       {detail.ai_triage.sop_action_checklist.map((step, sIdx) => (

@@ -1,4 +1,10 @@
-"""Local operator accounts and expiring opaque sessions for the single-instance MVP."""
+"""Operator accounts and expiring opaque sessions.
+
+With a ``store`` the session table is shared by every API replica (multi-instance
+safe; only the SHA-256 of the token is persisted). Without one, sessions stay in
+process memory, which is kept for unit tests and embedded use. Login throttling is
+per process; production deployments should also rate-limit at the edge or use OIDC.
+"""
 import hashlib
 import hmac
 import secrets
@@ -30,8 +36,9 @@ def verify_password(password, encoded):
 
 
 class OperatorSessions:
-    def __init__(self, users):
+    def __init__(self, users, store=None):
         self.users = users
+        self.store = store
         self.sessions = OrderedDict()
         self.attempts = OrderedDict()
         self.lock = threading.RLock()
@@ -53,18 +60,24 @@ class OperatorSessions:
             valid = verify_password(password, user["password_hash"] if user else self.dummy_hash)
             if not valid or not user:
                 raise HTTPException(401, "Invalid username or password")
+            token = secrets.token_urlsafe(32)
+            identity = {"tenant": user["tenant"], "role": "operator", "username": username}
+            key = hashlib.sha256(token.encode()).hexdigest()
+            if self.store is not None:
+                self.store.create_session(key, identity, time.time() + SESSION_SECONDS)
+                return token, identity
             self.sessions = OrderedDict((key, value) for key, value in self.sessions.items() if value[1] > now)
             if len(self.sessions) >= 4096:
                 raise HTTPException(503, "Session capacity reached; try again later")
-            token = secrets.token_urlsafe(32)
-            identity = {"tenant": user["tenant"], "role": "operator", "username": username}
-            self.sessions[hashlib.sha256(token.encode()).hexdigest()] = (identity, now + SESSION_SECONDS)
+            self.sessions[key] = (identity, now + SESSION_SECONDS)
             return token, identity
 
     def resolve(self, token):
         if not token:
             return None
         key = hashlib.sha256(token.encode()).hexdigest()
+        if self.store is not None:
+            return self.store.resolve_session(key)
         with self.lock:
             session = self.sessions.get(key)
             if session and session[1] > time.monotonic():
@@ -74,5 +87,9 @@ class OperatorSessions:
 
     def revoke(self, token):
         if token:
+            key = hashlib.sha256(token.encode()).hexdigest()
+            if self.store is not None:
+                self.store.revoke_session(key)
+                return
             with self.lock:
-                self.sessions.pop(hashlib.sha256(token.encode()).hexdigest(), None)
+                self.sessions.pop(key, None)

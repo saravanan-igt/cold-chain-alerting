@@ -4,6 +4,7 @@ import { IncidentDetailDialog } from "@/components/organisms/IncidentDetailDialo
 import {
   EVIDENCE_PAGE_SIZE,
   POLLING_INTERVAL,
+  useAcknowledgeIncidentMutation,
   useGetIncidentQuery,
 } from "@/services/coldchain-api";
 import { apiErrorMessage } from "@/services/errors";
@@ -18,6 +19,7 @@ export function IncidentDetailController() {
     pollingInterval: POLLING_INTERVAL,
     skipPollingIfUnfocused: true,
   });
+  const [acknowledge, ackState] = useAcknowledgeIncidentMutation();
   return (
     <IncidentDetailDialog
       open={id !== null}
@@ -26,10 +28,20 @@ export function IncidentDetailController() {
       error={query.error ? apiErrorMessage(query.error) : undefined}
       offset={offset}
       pageSize={EVIDENCE_PAGE_SIZE}
-      onClose={() => dispatch(incidentClosed())}
+      onClose={() => {
+        ackState.reset();
+        dispatch(incidentClosed());
+      }}
       onPage={(value) => dispatch(evidencePageChanged(value))}
       onRetry={() => {
         if (id) void query.refetch();
+      }}
+      acknowledging={ackState.isLoading}
+      acknowledgeError={
+        ackState.error ? apiErrorMessage(ackState.error) : undefined
+      }
+      onAcknowledge={(note) => {
+        if (id) void acknowledge({ id, note: note || undefined });
       }}
     />
   );

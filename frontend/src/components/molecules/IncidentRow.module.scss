@@ -31,6 +31,16 @@
   font-size: 11px;
   color: var(--muted);
 }
+.owner {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1f5132;
+}
+.unowned {
+  color: #a1452d;
+}
 .peak {
   font-size: 16px;
   text-align: right;

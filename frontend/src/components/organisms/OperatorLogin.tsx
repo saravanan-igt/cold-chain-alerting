@@ -50,7 +50,7 @@ export function OperatorLogin({
           required
           value={password}
           disabled={busy}
-          placeholder="e.g. nimbus123"
+          placeholder="Enter your password"
           onChange={(event) => setPassword(event.target.value)}
           autoComplete="current-password"
         />
@@ -63,7 +63,7 @@ export function OperatorLogin({
         </Button>
       </Form>
       <p className={styles.note}>
-        Demo credentials: <strong>nimbus.demo</strong> / <strong>nimbus123</strong>
+        Use the credentials provided by your administrator or local demo terminal.
       </p>
     </div>
   );

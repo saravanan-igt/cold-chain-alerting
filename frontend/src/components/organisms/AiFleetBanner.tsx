@@ -19,31 +19,22 @@ export function AiFleetBanner({
   onScan,
   onOpenCopilot,
 }: AiFleetBannerProps) {
-  const isLive = status?.has_api_key ?? false;
-  const healthScore = assessment?.fleet_health_score ?? 85;
-  const condition = assessment?.overall_condition ?? "OPTIMAL";
+  const condition = assessment?.overall_condition ?? "NO_OPEN_INCIDENTS";
 
   const conditionClass =
-    condition === "CRITICAL_ATTENTION_NEEDED"
+    condition === "ACTIVE_INCIDENTS"
       ? styles.criticalText
-      : condition === "ELEVATED_WATCH"
+      : condition === "DATA_QUALITY_REVIEW"
         ? styles.warningText
         : styles.optimalText;
 
   return (
-    <section className={styles.banner} aria-label="Claude AI Fleet Advisory">
+    <section className={styles.banner} aria-label="Rules-based fleet summary">
       <div className={styles.headerRow}>
         <div className={styles.titleGroup}>
-          <h2>
-            {status?.provider === "gemini"
-              ? "Google Gemini AI Fleet Intelligence"
-              : status?.provider === "anthropic"
-                ? "Anthropic Claude AI Fleet Intelligence"
-                : "Coldline Multi-AI Fleet Intelligence"}
-          </h2>
-          <span className={isLive ? styles.badgeLive : styles.badgeSim}>
-            {status?.provider?.toUpperCase() ?? "AI"} · {status?.model ?? "engine"} ·{" "}
-            {isLive ? "Live API" : "Cognitive Physics"}
+          <h2>Fleet rule summary</h2>
+          <span className={styles.badgeSim}>
+            {status?.provider ?? "deterministic_rules"} · no external model calls
           </span>
         </div>
         <div className={styles.actions}>
@@ -51,9 +42,9 @@ export function AiFleetBanner({
             type="button"
             className={styles.copilotButton}
             onClick={onOpenCopilot}
-            aria-label="Open AI Operations Copilot"
+            aria-label="Open operations assistant"
           >
-            Ask AI Copilot
+            Ask operations assistant
           </button>
           <button
             type="button"
@@ -61,7 +52,7 @@ export function AiFleetBanner({
             onClick={onScan}
             disabled={isScanning}
           >
-            {isScanning ? "Evaluating Fleet..." : "Run AI Risk Scan"}
+            {isScanning ? "Refreshing summary..." : "Refresh fleet summary"}
           </button>
         </div>
       </div>
@@ -70,49 +61,44 @@ export function AiFleetBanner({
         <>
           <div className={styles.statsGrid}>
             <div className={styles.statCard}>
-              <span className={labelClass("health")}>Fleet Health Score</span>
+              <span className={styles.label}>Registered trucks</span>
               <div className={`${styles.value} ${conditionClass}`}>
-                {healthScore}/100
+                {assessment.truck_assessments?.length ?? 0}
               </div>
-              <div className={styles.desc}>
-                {condition.replace(/_/g, " ")}
-              </div>
+              <div className={styles.desc}>{condition.replace(/_/g, " ")}</div>
+              <div className={styles.desc}>No cargo-safety score is calculated</div>
             </div>
 
             <div className={styles.statCard}>
-              <span className={styles.label}>Real Excursions</span>
+              <span className={styles.label}>Open incidents</span>
               <div className={`${styles.value} ${assessment.active_critical_alerts > 0 ? styles.criticalText : ""}`}>
                 {assessment.active_critical_alerts}
               </div>
-              <div className={styles.desc}>Verified Critical Alerts</div>
+              <div className={styles.desc}>Detector state</div>
             </div>
 
             <div className={styles.statCard}>
-              <span className={styles.label}>Predictive Warnings</span>
+              <span className={styles.label}>Pending / telemetry review</span>
               <div className={`${styles.value} ${assessment.predictive_warnings > 0 ? styles.warningText : ""}`}>
                 {assessment.predictive_warnings}
               </div>
-              <div className={styles.desc}>Sub-threshold Drifts</div>
+              <div className={styles.desc}>Pending candidates or stale data</div>
             </div>
 
             <div className={styles.statCard}>
-              <span className={styles.label}>Nominal Trucks</span>
+              <span className={styles.label}>Fresh without open/pending</span>
               <div className={`${styles.value} ${styles.optimalText}`}>
                 {assessment.normal_operating_trucks}
               </div>
-              <div className={styles.desc}>Safe Core Thermal Mass</div>
+              <div className={styles.desc}>Not a cargo disposition assessment</div>
             </div>
           </div>
 
           <p className={styles.executiveSummary}>
-            <strong>AI Dispatch Briefing:</strong> {assessment.executive_dispatch_summary}
+            <strong>Telemetry summary:</strong> {assessment.executive_dispatch_summary}
           </p>
         </>
       )}
     </section>
   );
-}
-
-function labelClass(name: string): string {
-  return styles.label;
 }

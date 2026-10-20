@@ -10,12 +10,15 @@ src/
   components/
     atoms/             Button, Brand, StatusBadge, Timestamp
     molecules/         MetricCard, Panel, Pagination, IncidentRow, feedback
-    organisms/         FleetTable, FleetMetrics, IncidentList, evidence dialog/chart
+    organisms/         FleetTable, FleetMetrics, IncidentList, evidence dialog/chart,
+                       IncidentResponsePanel (acknowledge, timeline, deliveries), DemoScenarioPanel
     templates/         WorkspaceTemplate and LoginTemplate (layout slots)
   features/
     auth/              Session validation and credential lifetime
     dashboard/         Query orchestration, selectors and screen composition
-    incidents/         Selected incident query and evidence pagination
+    incidents/         Selected incident query, evidence pagination and acknowledgement mutation
+    copilot/           Operations assistant orchestration
+    demo/              Live-simulation scenario runs (request, poll, cancel)
   services/            Typed API endpoints, error mapping and operator validation
   store/               Store factory, typed hooks, provider and UI slice
   types/               API contracts, independent of rendering and persistence
@@ -44,7 +47,9 @@ The deployed build is a **Next.js static export** in `frontend/out`, served by F
 
 Each successful sign-in mounts a new, keyed `StoreProvider`. `makeStore` creates a store for that session; there is no module-level store singleton. Unmount aborts running RTK queries and resets their cache. A late response from an old store cannot populate the new customer's store. Redux DevTools is disabled because request metadata can contain authorization headers. Client-side boundaries do not replace backend authorization.
 
-Queries refresh every 15 seconds while focused, and on reconnect/focus. `currentData` is used for parameterized queries so changing a filter, incident or evidence page cannot display a previous query's results as the new selection. The detail dialog refreshes too. Empty, loading, error/retry and stale-data states are explicit; the chart never draws a line across an unsupported telemetry gap. Detection thresholds and incident transitions remain in Python.
+Queries refresh every 15 seconds while focused (5 seconds when the fleet reports `demo_mode: live_simulation`), and on reconnect/focus. Mutations invalidate tags: acknowledging an incident refreshes the `Incident` list and detail; scenario requests refresh `Demo` runs. Every request carries `X-Coldline-Request: browser`, which the API requires for cookie-authenticated mutations (CSRF defence), and 409/422 responses surface the server's `detail` message. `currentData` is used for parameterized queries so changing a filter, incident or evidence page cannot display a previous query's results as the new selection. The detail dialog refreshes too. Empty, loading, error/retry and stale-data states are explicit; the chart never draws a line across an unsupported telemetry gap. Detection thresholds and incident transitions remain in Python.
+
+Fleet and incident summaries are deterministic and grounded in authenticated tenant data. The legacy `/api/v1/ai/*` routes do not invoke external models; they do not estimate equipment cause, cargo impact, or a probabilistic health score. Telemetry gaps remain unknown intervals, and the customer quality process owns cargo disposition.
 
 ## Extending the application
 
@@ -56,11 +61,11 @@ Queries refresh every 15 seconds while focused, and on reconnect/focus. `current
 
 ## Verification and tooling
 
-Use Node 24+, `npm ci`, then `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`. `npm run format` applies Prettier. No Vite application remains; Vitest may use Vite internally as a test runner dependency.
+Use Node 24.15+, `npm ci`, then `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`. `npm run format` applies Prettier. No Vite application remains; Vitest may use Vite internally as a test runner dependency.
 
-All eight frontend tests pass: authentication, failed login, API failure/retry, filtering, detail evidence, customer switching under Strict Mode, late-response isolation, API request deduplication/credentials, pagination resets and chart gaps. The Python HTTP smoke test serves the actual Next export and requests its generated static assets. A separate local development smoke check verified the Next login HTML and both unauthenticated/authenticated API proxy behavior. Type checking, lint, production build and the 23 backend tests pass. These checks do not replace visual browser QA.
+All fourteen frontend tests pass: incident acknowledgement and response timeline, demo scenario panel states, authentication, failed login, API failure/retry, filtering, detail evidence, customer switching under Strict Mode, late-response isolation, API request deduplication/credentials, pagination resets and chart gaps. The Python HTTP smoke test serves the actual Next export and requests its generated static assets. A separate local development smoke check verified the Next login HTML and both unauthenticated/authenticated API proxy behavior. Type checking, lint, production build and 50 backend tests (1 skipped) pass; the launcher integration requires Node.js 24.15+. These checks do not replace visual browser QA.
 
-TypeScript 6 and ESLint 9 are pinned for compatibility with the current `eslint-config-next` peer/API requirements; TypeScript 7 and ESLint 10 are not compatible with that tooling combination. ESLint 9 is upstream-deprecated, so track the framework's lint-tooling updates. The full npm audit currently reports five high-severity **development-only dependency entries** for one unpatched `braces` advisory through Next's lint plugin (`fast-glob` / `micromatch`). They do not ship in the static export. Do not blindly run `npm audit fix --force`: its proposed fix downgrades the Next lint configuration to an incompatible major. Production dependencies are audited separately with `npm audit --omit=dev`.
+TypeScript 6 and ESLint 9 are pinned for compatibility with the current `eslint-config-next` peer/API requirements; TypeScript 7 and ESLint 10 are not compatible with that tooling combination. ESLint 9 is upstream-deprecated, so track the framework's lint-tooling updates. The full npm audit currently reports five high-severity **development-only dependency entries** for one unpatched `braces` advisory through Next's lint plugin (`fast-glob` / `micromatch`). They do not ship in the static export. Do not blindly run `npm audit fix --force`: its proposed fix downgrades the Next lint configuration to an incompatible major. Production dependencies are audited separately with `npm run audit:prod` (`npm audit --omit=dev`), which reports zero; the dev-only advisory is an accepted risk recorded in the solution design.
 
 References: [Next.js App Router](https://nextjs.org/docs/app/getting-started), [Redux Toolkit with Next.js](https://redux.js.org/usage/nextjs).
 

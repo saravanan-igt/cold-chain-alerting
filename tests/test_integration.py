@@ -124,6 +124,22 @@ def test_staleness_is_independent_from_open_lifecycle(store):
     assert row["freshness"] == "stale" and row["status"] == "open"
 
 
+def test_reading_windows_include_the_most_recent_observations(store):
+    for minute in (0, 5, 10, 15, 20):
+        ingest(store, minute)
+
+    recent = store.get_truck_readings("nimbus", "T-01", limit=2)
+    assert [row["timestamp"] for row in recent] == [
+        sample(15).canonical()["timestamp"],
+        sample(20).canonical()["timestamp"],
+    ]
+    by_truck = store.get_readings_by_truck("nimbus", limit_per_truck=2)
+    assert [row["timestamp"] for row in by_truck["T-01"]] == [
+        sample(15).canonical()["timestamp"],
+        sample(20).canonical()["timestamp"],
+    ]
+
+
 def test_unknown_device_future_and_missing_fields(store):
     from datetime import datetime, timedelta, timezone
     assert store.ingest("nimbus", {})["status"] == "invalid"

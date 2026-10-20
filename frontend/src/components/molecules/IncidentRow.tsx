@@ -24,24 +24,18 @@ export function IncidentRow({
         <span className={styles.description}>
           Above {incident.rule.threshold_c} °C · qualified{" "}
           <Timestamp value={incident.qualified_at} />
-          {incident.ai_evaluation && (
-            <span
-              style={{
-                marginLeft: "8px",
-                padding: "2px 6px",
-                borderRadius: "4px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                background: incident.ai_evaluation.is_real_alert ? "#fef2f2" : "#f0fdf4",
-                color: incident.ai_evaluation.is_real_alert ? "#b91c1c" : "#15803d",
-                border: `1px solid ${incident.ai_evaluation.is_real_alert ? "#fca5a5" : "#86efac"}`,
-              }}
-            >
-              AI: {incident.ai_evaluation.is_real_alert ? "Genuine Alert" : "Benign"} (
-              {Math.round(incident.ai_evaluation.confidence_score * 100)}%)
-            </span>
-          )}
         </span>
+        {incident.acknowledgement ? (
+          <span className={styles.owner}>
+            Acknowledged by {incident.acknowledgement.acknowledged_by}
+          </span>
+        ) : (
+          incident.acknowledgement === null && (
+            <span className={`${styles.owner} ${styles.unowned}`}>
+              Unacknowledged
+            </span>
+          )
+        )}
       </span>
       <StatusBadge value={incident.lifecycle} />
       <span className={styles.peak}>

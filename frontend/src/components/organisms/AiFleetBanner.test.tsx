@@ -6,17 +6,17 @@ import type { AiFleetAssessment, AiStatus } from "@/types/domain";
 
 describe("AiFleetBanner", () => {
   const mockStatus: AiStatus = {
-    provider: "anthropic",
-    model: "claude-3-5-sonnet",
-    mode: "live_claude",
-    has_api_key: true,
-    capabilities: ["real_alert_detection"],
+    provider: "deterministic_rules",
+    model: "coldline-detector-v1",
+    mode: "local",
+    has_api_key: false,
+    capabilities: ["configured_rule_evaluation"],
   };
 
   const mockAssessment: AiFleetAssessment = {
     tenant: "nimbus",
-    fleet_health_score: 92,
-    overall_condition: "OPTIMAL",
+    fleet_health_score: null,
+    overall_condition: "ACTIVE_INCIDENTS",
     active_critical_alerts: 1,
     predictive_warnings: 1,
     normal_operating_trucks: 3,
@@ -25,7 +25,7 @@ describe("AiFleetBanner", () => {
     truck_assessments: [],
   };
 
-  it("renders Claude AI header and health score", () => {
+  it("renders rule summary without inventing a health score", () => {
     render(
       <AiFleetBanner
         status={mockStatus}
@@ -36,9 +36,9 @@ describe("AiFleetBanner", () => {
       />
     );
 
-    expect(screen.getByText(/Claude AI Fleet Intelligence/i)).toBeInTheDocument();
-    expect(screen.getByText("92/100")).toBeInTheDocument();
-    expect(screen.getByText("OPTIMAL")).toBeInTheDocument();
+    expect(screen.getByText("Fleet rule summary")).toBeInTheDocument();
+    expect(screen.getByText("No cargo-safety score is calculated")).toBeInTheDocument();
+    expect(screen.getByText("ACTIVE INCIDENTS")).toBeInTheDocument();
   });
 
   it("triggers onScan when scan button is clicked", async () => {
@@ -53,7 +53,7 @@ describe("AiFleetBanner", () => {
       />
     );
 
-    const btn = screen.getByRole("button", { name: /Run AI Risk Scan/i });
+    const btn = screen.getByRole("button", { name: /Refresh fleet summary/i });
     await userEvent.click(btn);
     expect(handleScan).toHaveBeenCalledTimes(1);
   });

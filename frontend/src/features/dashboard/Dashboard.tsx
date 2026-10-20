@@ -9,7 +9,8 @@ import { WorkspaceHeader } from "@/components/organisms/WorkspaceHeader";
 import { WorkspaceNavigation } from "@/components/organisms/WorkspaceNavigation";
 import { WorkspaceTemplate } from "@/components/templates/WorkspaceTemplate";
 import { AiFleetBanner } from "@/components/organisms/AiFleetBanner";
-import { AiCopilotModal } from "@/components/organisms/AiCopilotModal";
+import { CopilotController } from "@/features/copilot/CopilotController";
+import { DemoScenarioController } from "@/features/demo/DemoScenarioController";
 import { IncidentDetailController } from "@/features/incidents/IncidentDetailController";
 import {
   INCIDENT_PAGE_SIZE,
@@ -75,8 +76,9 @@ export function Dashboard({ onSignOut }: { onSignOut: () => void }) {
           <strong>Live simulation</strong>
           <span>
             Synthetic sensor data with current timestamps. Samples every 10
-            seconds; demo trigger 30 seconds and recovery 20 seconds. Production
-            rules are unchanged.
+            seconds; demo trigger 30 seconds and recovery 20 seconds. Use the
+            scenario panel below to inject genuine or non-genuine patterns.
+            Production rules are unchanged.
           </span>
         </div>
       )}
@@ -106,6 +108,9 @@ export function Dashboard({ onSignOut }: { onSignOut: () => void }) {
             trucks={model.fleet.trucks}
             assessments={assessmentsByTruck}
           />
+          {model.fleet.demo_mode === "live_simulation" && (
+            <DemoScenarioController trucks={model.fleet.trucks} />
+          )}
         </>
       )}
       <IncidentList
@@ -121,7 +126,7 @@ export function Dashboard({ onSignOut }: { onSignOut: () => void }) {
         onSelect={model.onSelect}
       />
       <IncidentDetailController />
-      <AiCopilotModal
+      <CopilotController
         open={copilotOpen}
         onClose={() => setCopilotOpen(false)}
       />

@@ -20,56 +20,137 @@ Live events are processed in received order, monotonically per stream. Older eve
 
 ```mermaid
 flowchart LR
-  Device[Device / HTTP simulator] --> API[FastAPI credential + payload checks]
+  Device[Device / HTTP simulator] --> API[FastAPI: request ID, metrics, credential + payload checks]
   API --> Service[Transactional ingestion service]
   Replay[Validated sorted offline replay] --> Service
   Service --> Domain[Pure incremental detector]
-  Service --> DB[(SQLite: readings, state, incidents, opening events)]
-  UI[React operations dashboard] --> Read[Tenant-scoped read API]
+  Service --> DB[(SQLite or PostgreSQL: readings, state, incidents, events, outbox)]
+  Worker[Notification worker] -->|claim, deliver, retry, escalate| DB
+  Worker --> Channels[Log / signed webhook / Slack-format webhook]
+  UI[React operations dashboard] --> Read[Tenant-scoped read + acknowledge API]
   Read --> DB
 ```
 
-The modular monolith keeps domain logic independent of transport and storage. SQLAlchemy transactions reserve the SQLite writer using `BEGIN IMMEDIATE` **before** state is read. A reading, detector state, incident and unique opening event commit together or roll back together. WAL permits concurrent reads; uniqueness and foreign keys back application checks. Schema version 1 uses a transactional `PRAGMA user_version` migration. Run one application instance/worker on a local disk; SQLite still has one writer. The lock is database-enforced, not a process-local mutex. Busy storage returns a retryable 503; replaying a partially completed batch is safe through idempotency. There is no external notification delivery yet.
+The modular monolith keeps domain logic independent of transport and storage. Each reading is processed in one database transaction that locks the truck's state before reading it: SQLite reserves the writer with `BEGIN IMMEDIATE`; PostgreSQL uses `SELECT ... FOR UPDATE` on the truck row, so concurrent API replicas serialise per truck rather than globally. The reading, detector state, incident, the incident timeline event and any notification outbox rows commit together or roll back together. Schema version 2 is additive over version 1 and is applied on start-up under a PostgreSQL advisory lock (`PRAGMA user_version` plus a `schema_meta` row record the version; a newer, unknown schema is refused). Busy storage returns a retryable 503; replaying a partially completed batch is safe through idempotency.
 
-Tenant identity comes from environment-configured credentials, never a caller-selected tenant field. Operator credentials permit scoped reads; device credentials bind tenant, truck and device and permit ingestion only. Customer JSON provisions names, accent color, fleet and tenant/per-truck rule overrides; configuration changes affect the next candidate after existing continuity ends. Provisioning is additive; removal/reassignment needs an explicit administrative migration. Config size and API bodies/evidence pages are bounded. Next.js App Router and React 19 organize the UI into atomic components and feature controllers. A session-specific Redux Toolkit store owns shared UI state; RTK Query handles API caching and polling. Credentials stay in memory outside Redux state, and sign-out aborts requests and clears cached customer data. The Next static export is served by FastAPI; development uses a Next API proxy. UI refreshes every 15 seconds while focused and distinguishes historical telemetry. See frontend/ARCHITECTURE.md.
+Tenant identity comes from configured credentials or a verified OIDC token, never a caller-selected tenant field. Operator credentials permit scoped reads and incident acknowledgement; device credentials bind tenant, truck and device and permit ingestion only. Customer JSON provisions names, accent color, fleet, tenant/per-truck rule overrides and notification channels/escalation; configuration changes affect the next candidate after existing continuity ends. Provisioning is additive; removal/reassignment needs an explicit administrative migration. Config size and API bodies/evidence pages are bounded. Next.js App Router and React 19 organize the UI into atomic components and feature controllers. A session-specific Redux Toolkit store owns shared UI state; RTK Query handles API caching and polling. Credentials stay in memory outside Redux state, and sign-out aborts requests and clears cached customer data. The Next static export is served by FastAPI; development uses a Next API proxy. The UI refreshes every 15 seconds while focused (5 seconds in the labelled live simulation) and distinguishes historical telemetry. See frontend/ARCHITECTURE.md.
 
 ## Deployment and evolution
 
 Initially recommend **a separate deployment/database per customer**, using the same versioned product and configuration contract: simpler operational ownership, backup/restore boundaries and residency controls. The implemented tenant boundary also permits a **shared deployment** for a low-risk pilot with lower infrastructure cost, but shared capacity and application-level isolation increase noisy-neighbor and authorization risks. Dedicated deployments cost more to operate; automate upgrades and provisioning rather than forking customer code. For regulated or demanding customers, confirm isolation and compliance requirements before selecting a model. Shared production should add centralized identity, least-privilege administration, audit history and stronger database isolation.
 
-## Claude AI Architecture: Real Alert Qualification, Gap Reasoning & Forensic Triage
+## Product architecture
 
-Standard threshold rules (`>8°C for 10 min`) create two severe operational dilemmas for Nimbus Freight:
-1. **Nuisance Alerts (False Positives)**: Normal loading door opens (T-02) and routine evaporator coil defrost cycles spike air temperature temporarily while core cargo remains protected by thermal inertia. Ops gets fatigued and ignores alarms.
-2. **Sneaky False Negatives**: Unmonitored connectivity blackouts (T-04, 10-minute gap) reset candidate counters even though the reefer was actively warming before and after the gap. Sub-threshold creep (T-03, drifting from 5.8°C to 7.0°C) spoils sensitive biologics without ever tripping an 8.0°C hard trigger.
+Coldline is a **modular monolith with a separately scalable worker role**. The same image runs as an API replica (`serve`) or a notification worker (`worker`); both are stateless and share one database. The deterministic detector remains the only component that opens or recovers an incident.
 
 ```mermaid
-flowchart TD
-  Telemetry[Sensor Stream: Temp, Humidity, Timestamp] --> Deterministic[Deterministic State Machine Engine]
-  Deterministic --> IncidentCandidate[Candidate Excursion / Event]
-  Telemetry --> ClaudeAI[Claude AI Cognitive Evaluator: Anthropic SDK]
-  ClaudeAI -->|Thermodynamic Momentum + Defrost Pattern| RealAlertFilter{Real Alert?}
-  RealAlertFilter -->|Benign Spike / Defrost| Suppress[Suppress sirens, log as benign warning]
-  RealAlertFilter -->|Genuine Excursion / Gap Dropout| Escalate[Escalate to High-Priority Dispatch]
-  Escalate --> AutoTriage[AI Incident Forensic Triage & SOP Checklist]
-  AutoTriage --> DriverScript[Pre-generated Driver SMS / Radio Dispatch Script]
-  AutoTriage --> UI[Operations Dashboard & Interactive Copilot]
+flowchart LR
+  subgraph Edge
+    Device[Sensor / gateway] -->|TLS, device key, idempotent event| LB[TLS ingress / load balancer]
+    Browser[Operator browser] -->|OIDC bearer or session cookie| LB
+  end
+  LB --> API1[API replica]
+  LB --> API2[API replica]
+  API1 & API2 -->|one transaction: reading + state + incident + event + outbox| DB[(PostgreSQL: managed identity, PITR)]
+  W[Notification worker] -->|SKIP LOCKED claim, lease| DB
+  W -->|HMAC-signed webhook, Slack format, log| Dest[Customer channels / on-call tool]
+  API1 & API2 & W -.->|JSON logs with request ID, /metrics| Obs[Log + metrics platform]
+  IdP[Customer IdP / Entra ID] -.->|JWKS| API1 & API2
 ```
 
-### 1. Multi-Dimensional Real Alert Detection
-Coldline incorporates the official Anthropic Claude SDK (`anthropic>=0.40.0`, default model `claude-3-5-sonnet-20241022`). The engine analyzes:
-- **Thermal Velocity ($dT/dt$) & Latent Heat**: Distinguishes single-point surface door opening spikes from deep refrigeration failure.
-- **Thermodynamic Continuity Across Connectivity Gaps (Solving T-04)**: When a vehicle warms to 8.9°C, loses signal for 10 minutes, and reconnects at 9.1°C, Claude evaluates that active cooling loss persisted during the blackout with 94% confidence, overcoming rigid counter resets.
-- **Predictive Sub-Threshold Drift (Solving T-03)**: Detects monotonic upward warming before safety ceilings are breached.
+| Concern | Implemented design | Production deployment |
+| --- | --- | --- |
+| Alert delivery | Transactional outbox written in the ingest transaction; worker delivers at-least-once | Run `backend.cli worker` as its own deployment; set `COLDCHAIN_NOTIFICATION_WORKER=0` on API replicas |
+| Human response | Idempotent acknowledgement with note, actor and time; immutable incident timeline | Map acknowledgement to the customer's on-call tool through webhooks |
+| Escalation | Per-tenant levels (minutes after opening) fire once each until acknowledged | Customer chooses channels, delays and quiet hours |
+| Horizontal scale | DB-backed operator sessions (hashed tokens), per-truck row locks, advisory-locked migrations/provisioning | PostgreSQL via `COLDCHAIN_DATABASE_URL`; any number of API replicas |
+| Identity | API keys for devices and integrations, password sessions for pilots, OIDC JWT verification (RS256/ES256, issuer, audience, tenant and role claims) | Entra ID or another OIDC IdP; managed identity token for PostgreSQL (`COLDCHAIN_DB_AUTH=azure-managed-identity`) |
+| Observability | JSON logs, `X-Request-ID` propagation, Prometheus `/metrics`, `/health` (liveness) and `/ready` (DB + worker) | Scrape with a metrics token; alert on dead-lettered notifications and `/ready` failures |
+| Backup and recovery | SQLite online backup with integrity check and SHA-256 manifest; verify and guarded restore | PostgreSQL point-in-time recovery plus scheduled restore drills |
 
-### 2. Dual-Path Hybrid Architecture & Graceful Fallback
-- **Safety First**: The deterministic state machine remains the authoritative boundary for event ordering and transactional database commits.
-- **Offline & Zero-Credential Resilience**: When `ANTHROPIC_API_KEY` is configured, requests stream to the live Claude API. When the key is omitted (local development, CI pipelines, offline field kits), an embedded deterministic cognitive physics engine computes degree-minutes, gap interpolation, and MKT to return identical schema responses with zero 500 errors.
+### Notification delivery and acknowledgement
 
-### 3. API Surface & Operations Copilot
-- `POST /api/v1/ai/evaluate-alert`: Evaluates alert authenticity and categorizes into `COMPRESSOR_REFRIGERATION_FAILURE`, `TRANSIENT_DOOR_OPENING`, `DEFROST_CYCLE`, `TELEMETRY_GAP_EXCURSION`, or `SUB_THRESHOLD_DRIFT`.
-- `GET /api/v1/ai/incidents/{incident_id}/triage`: Produces executive summary, degree-minute thermal load, QA quarantine recommendations, and pre-formatted driver SMS messages.
-- `GET /api/v1/ai/fleet-assessment`: Aggregates whole-fleet health score, critical alerts, and dispatcher recommendations.
-- `POST /api/v1/ai/chat`: Real-time interactive AI Copilot grounded in database state, enabling dispatchers to query truck conditions, ask regulatory questions, or generate dispatch communications.
+```mermaid
+stateDiagram-v2
+  [*] --> pending: incident opened / recovered / acknowledged / escalated (same transaction)
+  pending --> sending: worker claims (60 s lease, SKIP LOCKED)
+  sending --> delivered: 2xx
+  sending --> pending: 408 / 429 / 5xx / network error, backoff 5 s doubling to 15 min (+/-20% jitter)
+  sending --> dead: other 4xx, missing signing secret after retries, or 8 attempts
+  sending --> pending: lease expired (worker crashed)
+  dead --> pending: operator retry (audited)
+```
 
-Technical references: [Anthropic Python SDK](https://docs.anthropic.com/en/api/client-sdks), [SQLAlchemy SQLite dialect](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html), [SQLite transaction behavior](https://www.sqlite.org/lang_transaction.html), [FastAPI security tools](https://fastapi.tiangolo.com/reference/security/).
+- **Atomicity:** outbox rows are inserted in the ingest transaction, so an incident can never exist without its notification, and a rolled-back ingest never notifies. Rows are unique per tenant, incident, event and channel.
+- **At-least-once:** a crash after delivery but before marking can resend. Receivers de-duplicate on `X-Coldline-Delivery`. Webhooks carry `X-Coldline-Event`, `X-Coldline-Timestamp` and `X-Coldline-Signature: v1=HMAC-SHA256(secret, "<timestamp>." + body)`. The secret is read from the environment variable named by the channel's `secret_env`; it is never stored in configuration. Redirects are not followed.
+- **Acknowledgement:** `POST /api/v1/incidents/{id}/acknowledge` records who acknowledged and when, with an optional note. It is idempotent; a second call returns the original acknowledgement. Acknowledging stops escalation but does **not** close the incident. Only observed recovery closes it.
+- **Escalation:** the worker evaluates open, unacknowledged incidents against `notifications.escalation` levels (minutes after the incident was processed). Each level fires once and is recorded in the timeline.
+- **Operator visibility:** the incident dialog shows the acknowledgement form, timeline and per-channel delivery status. `GET /api/v1/notifications` lists deliveries, and `POST /api/v1/notifications/{id}/retry` re-queues dead letters.
+
+### Multi-instance operation
+
+SQLite remains the zero-dependency default for local use and single-site pilots, and it is still single-writer and single-host. With `COLDCHAIN_DATABASE_URL=postgresql+psycopg://...`, the same code runs as multiple replicas:
+
+- **Sessions:** browser sessions live in `operator_sessions` (SHA-256 token hash, absolute expiry), so any replica can serve any request. Sign-out revokes the session everywhere.
+- **Write correctness:** ingestion locks the truck row, which serialises one truck's stream while different trucks proceed in parallel. The worker claims outbox rows with `FOR UPDATE SKIP LOCKED`, so several workers do not deliver the same row concurrently.
+- **Start-up:** migration and provisioning take a PostgreSQL advisory lock, so replicas can start together.
+- **Per-process state:** login throttling and in-process metric counters are per replica. Aggregate metrics in the monitoring platform. Rate limiting at the ingress is recommended for internet-facing deployments.
+- **Not verified here:** PostgreSQL behaviour is covered by dialect-aware code and SQL compilation, but this repository's automated tests run on SQLite. Run the suite against a staging PostgreSQL instance before the first multi-instance deployment.
+
+### Identity and secrets
+
+- **OIDC:** when `COLDCHAIN_OIDC_ISSUER`, `COLDCHAIN_OIDC_AUDIENCE` and `COLDCHAIN_OIDC_JWKS_URL` are set, `Authorization: Bearer <JWT>` is verified against the IdP's JWKS. Only RS256 and ES256 are accepted. The token must have the configured issuer and audience, the operator role (`roles` contains `coldline.operator` by default), and a tenant claim (`coldline_tenant`) naming a provisioned tenant. Local accounts become optional.
+- **Browser CSRF:** cookie-authenticated mutations require the `X-Coldline-Request: browser` header, which a cross-site form cannot send. Cookies are HttpOnly and SameSite.
+- **Database:** `COLDCHAIN_DB_AUTH=azure-managed-identity` obtains a short-lived Entra token for each new PostgreSQL connection. This requires the optional `azure-identity` package and removes stored database passwords.
+- **Secrets:** device and operator keys, webhook signing secrets and metrics tokens come from the environment. In production, inject them from a managed secret store and rotate them there.
+
+### Observability and operations
+
+- **Logging:** with `COLDCHAIN_LOG_FORMAT=json`, logs are one JSON object per line. Each line carries a request ID, which is generated or taken from a validated `X-Request-ID` header and echoed in the response.
+- **Metrics:** `/metrics` exposes request counts and latency by route template, readings by outcome, incident transitions, notification attempts, escalations and acknowledgements, plus gauges for open incidents, outbox backlog, dead letters and worker cycle age. It can be protected with `COLDCHAIN_METRICS_TOKEN`.
+- **Suggested alerts:** `/ready` failing, `coldline_outbox_dead` above zero, a growing `coldline_outbox_pending`, and a rising 5xx rate.
+- **Probes:** `/health` is liveness only. `/ready` checks the database schema version and that the hosted worker is cycling; it is the container healthcheck.
+
+### Backup, recovery and targets
+
+- **SQLite:** `python -m backend.cli backup` uses SQLite's online backup API, runs `PRAGMA integrity_check`, and writes a manifest with SHA-256, schema version and row counts. `verify-backup` re-checks a copy. `restore` refuses to overwrite an existing database without `--force` and rejects backups from a newer schema. Schedule backups and copy them off-host.
+- **PostgreSQL:** use managed point-in-time recovery and geo-redundant backups. The CLI deliberately refuses SQLite-style backups for PostgreSQL URLs.
+- **Proposed targets (confirm with the customer):** RPO of 5 minutes and RTO of 1 hour for the pilot, demonstrated by a quarterly restore drill.
+- **Delivery after recovery:** incidents, timeline and pending outbox rows are all in the database, so pending notifications resume after a restore. The database is the single recovery unit.
+
+### Live demo: genuine and non-genuine alert simulation
+
+The labelled live simulation (`python run.py --live`, or `--live --baseline steady` so that only injected patterns excurse) exposes a **Simulate a real-time pattern** panel. Scenario steps are generated from the truck's own rule, so the expected outcome holds for any configured threshold or window.
+
+| Scenario | Genuine? | Expected detector outcome |
+| --- | --- | --- |
+| Compressor failure | Yes | Incident opens after the sustained window, then recovers |
+| Marginal sustained excursion | Yes | Incident opens; a small magnitude does not suppress a sustained breach |
+| Door-open spike | No | No incident; the spike returns below threshold before the window |
+| Single-sample sensor glitch | No | No incident; one sample cannot prove sustained warming |
+| Warm readings broken by a telemetry gap | No | No incident; continuity is unproven and data quality should be reviewed |
+
+The simulator is an ordinary API client. It ingests through device keys, and the operator records each run (queued, then running, then completed or cancelled). The UI compares the expected outcome with the incident actually observed during the run and flags any mismatch. Scenarios are disabled for tenants that are not in live-simulation mode and while a truck has an open incident.
+
+### Supply-chain note
+
+`npm audit` reports a high-severity advisory in `braces` (GHSA-vfj7-8cjw-p6xm). It is reached only through `eslint-config-next`, then `fast-glob`, then `micromatch`, and no patched `micromatch` release exists. It affects development linting only: `npm run audit:prod` reports zero vulnerabilities, and the runtime image contains no Node dependencies. This is an accepted, documented risk, to be re-checked when upstream publishes a fix.
+
+### AI and safety boundary
+
+The AI-labelled features are deterministic evidence summaries and are not part of the safety decision. Runtime assessments are tenant-scoped, and no telemetry is sent to an external model. Gaps are explicitly unconfirmed, causes and cargo disposition are not inferred, and release decisions remain with the customer's qualified quality process. Before considering a language model, establish customer consent and data residency, a validated output schema, provenance and a failure policy. Any model must stay advisory and out of alert qualification.
+
+### Decisions still owned by the customer
+
+The mechanisms are implemented; the customer must still choose the policy values:
+
+- the actual destination channels (on-call tool, Teams/Slack, email or SMS gateway behind a webhook)
+- escalation timings and quiet hours
+- who may acknowledge
+- product-specific thresholds and units
+- retention and residency
+- event volume
+- RPO/RTO
+- dedicated versus shared environments
+
+The 8°C/10-minute rule is an example for the supplied case data, not a validated safety specification.

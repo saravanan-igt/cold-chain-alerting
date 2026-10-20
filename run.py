@@ -37,9 +37,11 @@ def find_node() -> str:
     for candidate in candidates:
         if candidate.is_file():
             result = subprocess.run([str(candidate), "--version"], capture_output=True, text=True)
-            if result.returncode == 0 and int(result.stdout.strip().lstrip("v").split(".")[0]) >= 24:
-                return str(candidate)
-    raise RuntimeError("Node.js 24+ is required. Install it or use the project-local .runtime Node installation.")
+            if result.returncode == 0:
+                version = tuple(int(part) for part in result.stdout.strip().lstrip("v").split(".")[:2])
+                if version >= (24, 15):
+                    return str(candidate)
+    raise RuntimeError("Node.js 24.15+ is required. Install it or use the project-local .runtime Node installation.")
 
 
 def start(command: list[str], cwd: Path, env: dict[str, str]) -> subprocess.Popen:
@@ -95,8 +97,12 @@ def main() -> int:
     parser.add_argument("--frontend-port", type=int, default=3000)
     parser.add_argument("--db", default=None, help="Persistent demo database (never automatically deleted)")
     parser.add_argument("--live", action="store_true", help="Stream current-time simulated telemetry using fast, labelled demo rules")
-    parser.add_argument("--startup-timeout", type=float, default=60)
+    parser.add_argument("--baseline", choices=["seed", "steady"], default="seed",
+                        help="With --live: replay seed temperatures, or keep trucks steady so only injected demo scenarios excurse")
+    parser.add_argument("--startup-timeout", type=float, default=120)
     args = parser.parse_args()
+    if args.baseline != "seed" and not args.live:
+        parser.error("--baseline requires --live")
     args.db = args.db or ("live-demo.db" if args.live else "dev.db")
     processes: list[subprocess.Popen] = []
     try:
@@ -117,7 +123,7 @@ def main() -> int:
         node = find_node()
         next_cli = ROOT / "frontend/node_modules/next/dist/bin/next"
         if not next_cli.is_file():
-            raise RuntimeError("Frontend dependencies are missing. Run npm ci in frontend with Node 24+ first.")
+            raise RuntimeError("Frontend dependencies are missing. Run npm ci in frontend with Node 24.15+ first.")
 
         backend_url = f"http://127.0.0.1:{args.backend_port}"
         frontend_url = f"http://127.0.0.1:{args.frontend_port}"
@@ -126,12 +132,14 @@ def main() -> int:
                "PATH": str(Path(node).parent) + os.pathsep + os.environ.get("PATH", "")}
         print("Starting Coldline demo. Data is preserved; Ctrl+C stops both services.\n", flush=True)
         backend = start([interpreter, "-m", "backend.cli", "live-demo" if args.live else "demo", "--db", args.db,
-                         "--assume-utc", "--output", "data/dev-replay.json", "--port", str(args.backend_port)], ROOT, env)
+                         "--assume-utc", "--output", "data/dev-replay.json", "--port", str(args.backend_port),
+                         *(["--baseline", args.baseline] if args.live else [])], ROOT, env)
         processes.append(backend)
         wait_ready(backend, backend_url + "/health", "Backend", args.startup_timeout)
         frontend = start([node, str(next_cli), "dev", "--hostname", "127.0.0.1", "--port", str(args.frontend_port)], ROOT / "frontend", env)
         processes.append(frontend)
         wait_ready(frontend, frontend_url, "Frontend", args.startup_timeout)
+        print("  Use the browser password printed by the backend during startup.", flush=True)
         print(f"\nColdline is ready!\n  Frontend: {frontend_url}\n  API docs: {backend_url}/docs\n"
               "  Login: username=nimbus.demo  password=nimbus123\n"
               "  Press Ctrl+C here to stop both services.\n", flush=True)

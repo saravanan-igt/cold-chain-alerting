@@ -1,1 +1,1 @@
-"""Claude AI enhancements for Coldline cold-chain operations."""
+"""Compatibility package for deterministic telemetry and incident summaries."""

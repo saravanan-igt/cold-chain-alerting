@@ -1,5 +1,8 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import type {
+  Acknowledgement,
+  DemoScenarioRun,
+  DemoScenarios,
   Fleet,
   IncidentDetail,
   IncidentPage,
@@ -20,7 +23,7 @@ export const POLLING_INTERVAL = 15_000;
 
 export const coldchainApi = createApi({
   reducerPath: "coldchainApi",
-  tagTypes: ["Fleet", "Incidents", "AiFleet"],
+  tagTypes: ["Fleet", "Incidents", "Incident", "AiFleet", "Demo"],
   baseQuery: fetchBaseQuery({
     baseUrl: "/api/v1/",
     cache: "no-store",
@@ -29,6 +32,8 @@ export const coldchainApi = createApi({
       // Credential belongs to this store's closure, never Redux state/actions.
       const key = (extra as ApiCredentials)?.apiKey;
       if (key) headers.set("X-API-Key", key);
+      // Cross-site forms cannot set custom headers; the API requires it for cookie-authenticated changes.
+      headers.set("X-Coldline-Request", "browser");
       return headers;
     },
   }),
@@ -59,6 +64,44 @@ export const coldchainApi = createApi({
         url: `incidents/${encodeURIComponent(id)}`,
         params: { limit: EVIDENCE_PAGE_SIZE, offset },
       }),
+      providesTags: (_result, _error, { id }) => [{ type: "Incident", id }],
+    }),
+    acknowledgeIncident: builder.mutation<
+      {
+        incident_id: string;
+        created: boolean;
+        acknowledgement: Acknowledgement;
+      },
+      { id: string; note?: string }
+    >({
+      query: ({ id, note }) => ({
+        url: `incidents/${encodeURIComponent(id)}/acknowledge`,
+        method: "POST",
+        body: note ? { note } : {},
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        "Incidents",
+        { type: "Incident", id },
+      ],
+    }),
+    getDemoScenarios: builder.query<DemoScenarios, void>({
+      query: () => "demo/scenarios",
+      providesTags: ["Demo"],
+    }),
+    startDemoScenario: builder.mutation<
+      DemoScenarioRun,
+      { truck_id: string; scenario: string }
+    >({
+      query: (body) => ({ url: "demo/scenarios", method: "POST", body }),
+      invalidatesTags: ["Demo"],
+    }),
+    cancelDemoScenario: builder.mutation<DemoScenarioRun, number>({
+      query: (id) => ({
+        url: `demo/scenarios/${id}`,
+        method: "PATCH",
+        body: { status: "cancelled" },
+      }),
+      invalidatesTags: ["Demo"],
     }),
     getAiStatus: builder.query<AiStatus, void>({
       query: () => "ai/status",
@@ -68,7 +111,8 @@ export const coldchainApi = createApi({
       providesTags: ["AiFleet"],
     }),
     getAiIncidentTriage: builder.query<AiIncidentTriage, string>({
-      query: (incidentId) => `ai/incidents/${encodeURIComponent(incidentId)}/triage`,
+      query: (incidentId) =>
+        `ai/incidents/${encodeURIComponent(incidentId)}/triage`,
     }),
     evaluateAlert: builder.mutation<
       AiAlertEvaluation,
@@ -97,6 +141,10 @@ export const {
   useGetFleetQuery,
   useGetIncidentsQuery,
   useGetIncidentQuery,
+  useAcknowledgeIncidentMutation,
+  useGetDemoScenariosQuery,
+  useStartDemoScenarioMutation,
+  useCancelDemoScenarioMutation,
   useGetAiStatusQuery,
   useGetAiFleetAssessmentQuery,
   useGetAiIncidentTriageQuery,

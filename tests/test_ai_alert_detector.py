@@ -1,4 +1,4 @@
-"""Unit tests for Claude AI Real Alert Detection and Forensic Triage Engine."""
+"""Tests for deterministic, evidence-grounded operational summaries."""
 import pytest
 
 from backend.ai.client import get_ai_status
@@ -10,22 +10,12 @@ from backend.ai.copilot import chat_with_copilot
 
 def test_ai_status_structure(monkeypatch):
     status = get_ai_status()
-    assert "real_alert_detection" in status["capabilities"]
-    assert "telemetry_gap_reasoning" in status["capabilities"]
+    assert "configured_rule_evaluation" in status["capabilities"]
     assert "supported_providers" in status
-
-    # Test Gemini provider activation
     monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
-    gemini_status = get_ai_status()
-    assert gemini_status["provider"] == "gemini"
-    assert "gemini" in gemini_status["model"].lower()
-
-    # Test Anthropic provider preference
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
-    monkeypatch.setenv("AI_PROVIDER", "anthropic")
-    anthropic_status = get_ai_status()
-    assert anthropic_status["provider"] == "anthropic"
-    assert "claude" in anthropic_status["model"].lower()
+    assert get_ai_status()["provider"] == "deterministic_rules"
+    assert get_ai_status()["has_api_key"] is False
 
 
 def test_ai_detect_genuine_sustained_alert():
@@ -41,15 +31,16 @@ def test_ai_detect_genuine_sustained_alert():
     result = evaluate_real_alert("T-01", readings, rule)
 
     assert result["is_real_alert"] is True
-    assert result["severity"] == "CRITICAL"
-    assert result["confidence_score"] >= 0.90
-    assert result["alert_category"] == "COMPRESSOR_REFRIGERATION_FAILURE"
+    assert result["severity"] == "WARNING"
+    assert result["confidence_score"] is None
+    assert result["alert_category"] == "QUALIFIED_EXCURSION"
     assert result["suppressed_as_benign"] is False
     assert "T-01" in result["one_line_summary"]
+    assert result["cargo_spoilage_risk"] == "NOT_ASSESSED"
 
 
-def test_ai_suppress_transient_door_spike():
-    """T-02 scenario: isolated spike of 8.9 C with immediate recovery."""
+def test_short_spike_does_not_qualify():
+    """An isolated warm observation is below the sustained-duration rule."""
     readings = [
         {"timestamp": "2026-07-20T08:00:00+00:00", "temperature_c": 6.0},
         {"timestamp": "2026-07-20T08:05:00+00:00", "temperature_c": 6.2},
@@ -61,9 +52,9 @@ def test_ai_suppress_transient_door_spike():
     result = evaluate_real_alert("T-02", readings, rule)
 
     assert result["is_real_alert"] is False
-    assert result["suppressed_as_benign"] is True
-    assert result["alert_category"] == "TRANSIENT_DOOR_OPENING"
-    assert result["cargo_spoilage_risk"] == "NEGLIGIBLE"
+    assert result["suppressed_as_benign"] is False
+    assert result["alert_category"] == "NO_QUALIFIED_EXCURSION"
+    assert result["cargo_spoilage_risk"] == "NOT_ASSESSED"
 
 
 def test_ai_detect_telemetry_gap_excursion():
@@ -78,14 +69,15 @@ def test_ai_detect_telemetry_gap_excursion():
     rule = {"threshold_c": 8.0, "sustained_minutes": 10, "max_gap_minutes": 5, "recovery_minutes": 5}
     result = evaluate_real_alert("T-04", readings, rule)
 
-    assert result["is_real_alert"] is True
-    assert result["alert_category"] == "TELEMETRY_GAP_EXCURSION"
-    assert result["severity"] == "CRITICAL"
-    assert "gap" in result["root_cause_hypothesis"].lower() or "blackout" in result["root_cause_hypothesis"].lower()
+    assert result["is_real_alert"] is False
+    assert result["alert_category"] == "UNCONFIRMED_TELEMETRY_GAP"
+    assert result["severity"] == "WARNING"
+    assert "gap" in result["one_line_summary"].lower()
+    assert "not assumed" in result["one_line_summary"].lower()
 
 
 def test_ai_detect_sub_threshold_drift():
-    """T-03 scenario: creeping upward from 5.8 to 7.0 C under the 8.0 ceiling."""
+    """A below-threshold rise is not presented as a predictive safety warning."""
     readings = [
         {"timestamp": "2026-07-20T08:00:00+00:00", "temperature_c": 5.8},
         {"timestamp": "2026-07-20T08:05:00+00:00", "temperature_c": 6.0},
@@ -97,8 +89,8 @@ def test_ai_detect_sub_threshold_drift():
     rule = {"threshold_c": 8.0, "sustained_minutes": 10, "max_gap_minutes": 5, "recovery_minutes": 5}
     result = evaluate_real_alert("T-03", readings, rule)
 
-    assert result["alert_category"] == "SUB_THRESHOLD_DRIFT"
-    assert result["severity"] == "WARNING"
+    assert result["alert_category"] == "NO_QUALIFIED_EXCURSION"
+    assert result["severity"] == "LOW"
 
 
 def test_ai_incident_triage():

@@ -1,29 +1,79 @@
-version: "3.8"
-
 services:
+  # Default: one instance, SQLite on a named volume (pilot / single-site).
   coldline:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: coldline-app
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
-      # Default predictable login for Docker Desktop demos:
-      - COLDCHAIN_DEMO_PASSWORD=nimbus123
-      # AI API Keys (passes through from host if set, or set them here):
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      # Preferred AI Provider: 'auto' | 'gemini' | 'anthropic'
-      - AI_PROVIDER=${AI_PROVIDER:-auto}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
+      COLDCHAIN_DATABASE_URL: /app/data/coldchain.db
+      COLDCHAIN_CONFIG: /app/config/customers.json
+      COLDCHAIN_USERS: ${COLDCHAIN_USERS:-}
+      COLDCHAIN_CREDENTIALS: ${COLDCHAIN_CREDENTIALS:-}
+      COLDCHAIN_SECURE_COOKIES: ${COLDCHAIN_SECURE_COOKIES:-0}
+      COLDCHAIN_METRICS_TOKEN: ${COLDCHAIN_METRICS_TOKEN:-}
     volumes:
-      # Persistent SQLite database storage on host:
-      - ./data:/app/data
+      - coldline-data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
       interval: 15s
       timeout: 3s
       retries: 3
     restart: unless-stopped
+
+  # Multi-instance topology: `docker compose --profile postgres up --scale coldline-api=2`
+  # (put a load balancer in front of the API replicas for real deployments).
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: coldline
+      POSTGRES_USER: coldline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - coldline-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coldline -d coldline"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  coldline-api:
+    profiles: ["postgres"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8001-8009:8000"
+    environment: &pg-env
+      COLDCHAIN_DATABASE_URL: postgresql+psycopg://coldline:${POSTGRES_PASSWORD:-}@postgres:5432/coldline
+      COLDCHAIN_CONFIG: /app/config/customers.json
+      COLDCHAIN_USERS: ${COLDCHAIN_USERS:-}
+      COLDCHAIN_CREDENTIALS: ${COLDCHAIN_CREDENTIALS:-}
+      COLDCHAIN_SECURE_COOKIES: ${COLDCHAIN_SECURE_COOKIES:-0}
+      COLDCHAIN_METRICS_TOKEN: ${COLDCHAIN_METRICS_TOKEN:-}
+      COLDCHAIN_NOTIFICATION_WORKER: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  coldline-worker:
+    profiles: ["postgres"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "backend.cli", "worker"]
+    environment: *pg-env
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  coldline-data:
+  coldline-pg:

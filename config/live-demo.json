@@ -1,20 +1,107 @@
 {
   "tenants": [
     {
-      "id": "nimbus", "name": "Nimbus Freight", "accent": "#17675e", "demo_mode": "live_simulation",
-      "rule": {"threshold_c": 8, "sustained_minutes": 0.5, "max_gap_minutes": 0.25, "recovery_minutes": 0.3333333333333333},
+      "id": "nimbus",
+      "name": "Nimbus Freight",
+      "accent": "#17675e",
+      "demo_mode": "live_simulation",
+      "rule": {
+        "threshold_c": 8,
+        "sustained_minutes": 0.5,
+        "max_gap_minutes": 0.25,
+        "recovery_minutes": 0.3333333333333333
+      },
       "trucks": [
-        {"id": "T-01", "device_id": "sensor-T-01"},
-        {"id": "T-02", "device_id": "sensor-T-02"},
-        {"id": "T-03", "device_id": "sensor-T-03"},
-        {"id": "T-04", "device_id": "sensor-T-04"},
-        {"id": "T-05", "device_id": "sensor-T-05"}
-      ]
+        {
+          "id": "T-01",
+          "device_id": "sensor-T-01"
+        },
+        {
+          "id": "T-02",
+          "device_id": "sensor-T-02"
+        },
+        {
+          "id": "T-03",
+          "device_id": "sensor-T-03"
+        },
+        {
+          "id": "T-04",
+          "device_id": "sensor-T-04"
+        },
+        {
+          "id": "T-05",
+          "device_id": "sensor-T-05"
+        }
+      ],
+      "notifications": {
+        "channels": [
+          {
+            "id": "operations-log",
+            "type": "log",
+            "events": [
+              "incident.opened",
+              "incident.recovered",
+              "incident.acknowledged"
+            ]
+          },
+          {
+            "id": "duty-manager",
+            "type": "log",
+            "events": []
+          }
+        ],
+        "escalation": [
+          {
+            "after_minutes": 1,
+            "channels": [
+              "duty-manager"
+            ]
+          }
+        ]
+      }
     },
     {
-      "id": "alpine", "name": "Alpine Produce", "accent": "#505eaa",
-      "rule": {"threshold_c": 6, "sustained_minutes": 15, "max_gap_minutes": 5, "recovery_minutes": 10},
-      "trucks": [{"id": "T-01", "device_id": "alpine-sensor-01"}]
+      "id": "alpine",
+      "name": "Alpine Produce",
+      "accent": "#505eaa",
+      "rule": {
+        "threshold_c": 6,
+        "sustained_minutes": 15,
+        "max_gap_minutes": 5,
+        "recovery_minutes": 10
+      },
+      "trucks": [
+        {
+          "id": "T-01",
+          "device_id": "alpine-sensor-01"
+        }
+      ],
+      "notifications": {
+        "channels": [
+          {
+            "id": "operations-log",
+            "type": "log",
+            "events": [
+              "incident.opened",
+              "incident.recovered",
+              "incident.acknowledged"
+            ]
+          },
+          {
+            "id": "duty-manager",
+            "type": "log",
+            "events": []
+          }
+        ],
+        "escalation": [
+          {
+            "after_minutes": 1,
+            "channels": [
+              "duty-manager"
+            ]
+          }
+        ]
+      }
     }
   ]
 }
