@@ -2,7 +2,7 @@
 
 A working multi-customer foundation for the Nimbus Freight FDE case study: deterministic detection, tenant-scoped API, durable incident state, explainable replay, configurable customer rules, and a React operations dashboard.
 
-**Actual supplied-dataset result:** 54 readings → **2 opening incidents**, T-01 and T-05. Both start at 08:10 UTC, qualify at 08:20, and recover at 08:50 on July 20, 2026. T-04's missing interval breaks continuity; T-02 is a brief spike; T-03 stays normal. See [exported evidence](examples/supplied-dataset-result.json) and [solution design](SOLUTION_DESIGN.md).
+**Actual supplied-dataset result:** 54 readings → **2 opening incidents**, T-01 and T-05. Both start at 08:10 UTC, qualify at 08:20, and recover at 08:50 on July 20, 2026. T-04's missing interval breaks continuity; T-02 is a brief spike; T-03 stays normal. See [exported evidence](examples/supplied-dataset-result.json), [solution design](SOLUTION_DESIGN.md), [architecture overview](ARCHITECTURE_OVERVIEW.md) and the [demo guide](DEMO_GUIDE.md).
 
 ## Quick start (PowerShell, from repository root)
 
