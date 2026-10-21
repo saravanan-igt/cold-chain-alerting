@@ -211,6 +211,8 @@ Sessions expire after eight hours, are revoked on sign-out, and are stored (hash
 
 ### Simulating genuine and non-genuine alerts
 
+A step-by-step presentation script is in [DEMO_GUIDE.md](DEMO_GUIDE.md).
+
 For a controlled presentation start with a steady fleet so that only injected patterns cross the threshold:
 
 ```powershell
