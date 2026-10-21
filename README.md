@@ -12,7 +12,7 @@ A working multi-customer foundation for the Nimbus Freight FDE case study: deter
 .venv\Scripts\python.exe run.py
 ```
 
-Open **http://127.0.0.1:3000** and sign in with the printed **Nimbus Freight username and password**. The launcher starts the seeded demo API and Next.js development server, waits for both to become ready, and connects the API proxy automatically. It uses the project-local Node runtime when available, otherwise Node 24.15+ on PATH. Press **Ctrl+C** in the same terminal to stop both services and their workers. Existing `dev.db` data is preserved; demo credentials are regenerated at each launch.
+Open **http://127.0.0.1:3000** and sign in with the printed **Nimbus Freight username and password**. The launcher starts the seeded demo API and Next.js development server, waits for both to become ready, and connects the API proxy automatically. It uses the project-local Node runtime when available, otherwise Node 24.15+ on PATH. Press **Ctrl+C** in the same terminal to stop both services and their workers. Existing `dev.db` data is preserved. Demo passwords are generated once and saved to the git-ignored `config/demo-passwords.local.json`; later launches reuse them. Edit that file (usernames to passwords of at least 8 characters) to choose your own, or delete it to regenerate. API keys are still regenerated at each launch.
 
 Optional ports/database: `.venv\Scripts\python.exe run.py --frontend-port 3001 --backend-port 8001 --db another-demo.db`. The script reports occupied ports or missing dependencies instead of stopping unrelated processes or installing packages automatically. On macOS/Linux use `.venv/bin/python run.py`.
 
@@ -30,7 +30,7 @@ cd ..
 .venv/Scripts/python.exe -m backend.cli demo --db demo.db --assume-utc
 ```
 
-Open **http://127.0.0.1:8000** and enter the printed **Nimbus Freight username and password**. Demo passwords are randomly generated per start and stored as salted scrypt hashes in the server environment. Browser sessions use HTTP-only SameSite cookies. Demo runs replay before serving; restarting against an identical replay database deduplicates it. It does not erase the database. Use a new `--db` filename for a fresh scenario or rule comparison. Do not mix a live ingestion database with replay: late/conflicting results fail the replay command and require a fresh database.
+Open **http://127.0.0.1:8000** and enter the printed **Nimbus Freight username and password**. Demo passwords come from `config/demo-passwords.local.json` (generated on first run, git-ignored) and are held only as salted scrypt hashes in the server environment. Browser sessions use HTTP-only SameSite cookies. Demo runs replay before serving; restarting against an identical replay database deduplicates it. It does not erase the database. Use a new `--db` filename for a fresh scenario or rule comparison. Do not mix a live ingestion database with replay: late/conflicting results fail the replay command and require a fresh database.
 
 On macOS/Linux use `.venv/bin/python` in place of `.venv/Scripts/python.exe`. If `python` is not on PATH, use your installed Python 3.11+ executable to create the environment. If your organization intercepts TLS, configure its trusted CA; do not disable certificate validation. In this workspace, Python installation used `--use-feature=truststore` with the Windows certificate store.
 
@@ -78,7 +78,8 @@ Provisioning creates/updates entries and does not delete omitted historical reco
 | `COLDCHAIN_CREDENTIALS` | JSON map from secret key to authorized principal; useful for device and API-key clients |
 | `COLDCHAIN_USERS` | JSON map of operator usernames to tenant and scrypt password hash; enables browser login |
 | `DEVICE_KEY` | Simulator's device key; choose another variable with `--key-env` |
-| `COLDCHAIN_DEMO_PASSWORD` | Optional fixed password for local `demo`/`live-demo` commands only; never set a production default |
+| `COLDCHAIN_DEMO_PASSWORD` | Optional single password for all local demo accounts; overrides `config/demo-passwords.local.json`. Never set a production default |
+| `COLDCHAIN_DEMO_PASSWORDS_FILE` | Alternative location for the stable demo password file |
 | `COLDCHAIN_SECURE_COOKIES` | Set to `1` behind HTTPS; Compose overrides to `0` for localhost-only HTTP development |
 
 Example credential shape, with **placeholder secrets to replace**:
@@ -175,7 +176,7 @@ Next three priorities: (1) customer decisions on channels, escalation timings, a
 
 ## Verification record
 
-- `python -m pytest -q`: **50 passed, 1 skipped** (the launcher integration is skipped when the available Node.js version is below 24.15), including outbox atomicity, signed webhook delivery, retry/backoff/dead-letter, escalation until acknowledgement, sessions shared across two app instances, OIDC verification, backup/restore, v1?v2 migration, scenario expectations against every configured rule, domain boundaries, configuration snapshots, restart continuity, concurrent duplicates, transaction rollback, tenant/device isolation, actual dataset replay and a real TCP server/simulator test.
+- `python -m pytest -q`: **52 passed** (the launcher integration is skipped when Node.js 24.15+ is unavailable), including outbox atomicity, signed webhook delivery, retry/backoff/dead-letter, escalation until acknowledgement, sessions shared across two app instances, OIDC verification, backup/restore, v1→v2 migration, scenario expectations against every configured rule, domain boundaries, configuration snapshots, restart continuity, concurrent duplicates, transaction rollback, tenant/device isolation, actual dataset replay and a real TCP server/simulator test.
 - `python -m pip check`: no broken requirements. `requirements.txt` locks the verified environment, including transitive dependencies.
 - `npm run build`: Next.js production static export passed; its HTML and generated assets were served through the real backend HTTP smoke test. Frontend component/store tests and lint/type checks are described in [frontend architecture](frontend/ARCHITECTURE.md).
 - `npm test`: **14 frontend tests passed**, including incident acknowledgement and the demo scenario panel, including customer switching under React Strict Mode, cache isolation, invalid login, API retry and telemetry gap rendering. `npm run typecheck` and `npm run lint` passed.
@@ -197,11 +198,11 @@ Run both services and a continuous sensor simulator with:
 .venv/Scripts/python.exe run.py --live
 ```
 
-Open http://127.0.0.1:3000. Sign in as **nimbus.demo** with the password printed in the terminal. Credentials are regenerated on each launch. Use `alpine.demo` and its printed password to demonstrate customer isolation.
+Open http://127.0.0.1:3000. Sign in as **nimbus.demo** with the password printed in the terminal (stable across launches; see `config/demo-passwords.local.json`). Use `alpine.demo` and its password to demonstrate customer isolation.
 
 The simulator uses temperatures from `starter_kit/data/sensor_readings.json`, stamps each observation with the current UTC time and sends it through the device-authenticated HTTP ingestion API every 10 seconds. The dashboard explicitly labels this **Live simulation**: these are synthetic observations, not connected truck sensors. The actual detection, persisted incident, evidence and recovery paths run normally. Notifications go to the log channel in this profile; escalation fires 1 minute after opening if the incident is unacknowledged.
 
-The isolated `config/live-demo.json` profile triggers after 30 seconds above 8 C, requires 20 seconds of normal readings for recovery and resets continuity after a gap above 15 seconds. T-01 and T-05 should open incidents roughly 50?60 seconds after streaming starts and recover around 110?120 seconds. The live dashboard polls every 5 seconds. The sequence repeats. T-04 demonstrates a telemetry gap that breaks continuity. Production rules in `config/customers.json` are unchanged.
+The isolated `config/live-demo.json` profile triggers after 30 seconds above 8 C, requires 20 seconds of normal readings for recovery and resets continuity after a gap above 15 seconds. T-01 and T-05 should open incidents roughly 50–60 seconds after streaming starts and recover around 110–120 seconds. The live dashboard polls every 5 seconds. The sequence repeats. T-04 demonstrates a telemetry gap that breaks continuity. Production rules in `config/customers.json` are unchanged.
 
 Live mode uses `live-demo.db`; historical mode (`run.py` without `--live`) uses `dev.db` and preserves the original timestamps. Both preserve existing data. For a clean presentation use `--live --db presentation-01.db` with a new filename. Ctrl+C stops both servers and the simulator. After building the frontend, a backend-only alternative is `python -m backend.cli live-demo` on port 8000.
 
@@ -219,7 +220,7 @@ For a controlled presentation start with a steady fleet so that only injected pa
 .venv\Scripts\python.exe run.py --live --baseline steady --db presentation-01.db
 ```
 
-The dashboard shows a **Simulate a real-time pattern** panel. Choose a truck, then a **genuine excursion** (compressor failure, marginal sustained excursion) or a **non-genuine pattern** (door-open spike, single-sample sensor glitch, warm readings broken by a telemetry gap). Each run shows its expected outcome, the incident actually observed and a verdict (*As expected* or *Mismatch ? review*). Patterns are generated from the truck's own rule, take 50?100 seconds, and are disabled while that truck has an open incident or another run. Without `--baseline steady`, seed temperatures keep replaying on the other trucks. Scripts can inject the same patterns:
+The dashboard shows a **Simulate a real-time pattern** panel. Choose a truck, then a **genuine excursion** (compressor failure, marginal sustained excursion) or a **non-genuine pattern** (door-open spike, single-sample sensor glitch, warm readings broken by a telemetry gap). Each run shows its expected outcome, the incident actually observed and a verdict (*As expected* or *Mismatch — review*). Patterns are generated from the truck's own rule, take 50–100 seconds, and are disabled while that truck has an open incident or another run. Without `--baseline steady`, seed temperatures keep replaying on the other trucks. Scripts can inject the same patterns:
 
 ```powershell
 $h = @{ "X-API-Key" = "<printed operator key>" }
@@ -283,4 +284,4 @@ $env:POSTGRES_PASSWORD = "<strong local password>"
 docker compose --profile postgres up --build --scale coldline-api=2
 ```
 
-API replicas publish on loopback ports 8001?8009; put a load balancer in front of them for real deployments. For Azure, replace the compose database with Azure Database for PostgreSQL, set `COLDCHAIN_DB_AUTH=azure-managed-identity` and omit the password from the URL. The Compose files were not executed in the implementation environment (no Docker available).
+API replicas publish on loopback ports 8001–8009; put a load balancer in front of them for real deployments. For Azure, replace the compose database with Azure Database for PostgreSQL, set `COLDCHAIN_DB_AUTH=azure-managed-identity` and omit the password from the URL. The Compose files were not executed in the implementation environment (no Docker available).

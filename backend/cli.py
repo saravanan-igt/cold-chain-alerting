@@ -10,6 +10,25 @@ from backend.storage import Store, load_config
 from backend.auth import hash_password
 
 
+DEMO_PASSWORDS_FILE = Path(os.environ.get("COLDCHAIN_DEMO_PASSWORDS_FILE", "config/demo-passwords.local.json"))
+
+
+def demo_passwords(usernames):
+    """Stable local demo passwords: generated once, then reused from a git-ignored file the presenter may edit."""
+    stored = {}
+    if DEMO_PASSWORDS_FILE.is_file():
+        stored = json.loads(DEMO_PASSWORDS_FILE.read_text(encoding="utf-8"))
+        if not isinstance(stored, dict) or not all(isinstance(v, str) and len(v) >= 8 for v in stored.values()):
+            raise SystemExit(f"{DEMO_PASSWORDS_FILE} must map usernames to passwords of at least 8 characters")
+    missing = [name for name in usernames if name not in stored]
+    if missing:
+        stored.update({name: secrets.token_urlsafe(12) for name in missing})
+        DEMO_PASSWORDS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        DEMO_PASSWORDS_FILE.write_text(json.dumps(stored, indent=2) + "\n", encoding="utf-8")
+        print(f"Saved demo passwords for {', '.join(missing)} to {DEMO_PASSWORDS_FILE} (git-ignored; edit to change).", flush=True)
+    return stored
+
+
 def maintenance(args):
     """Commands that never start the API: backup, restore, verify-backup and the standalone worker."""
     if args.command in ("backup", "restore") and "://" in args.db and not args.db.startswith("sqlite"):
@@ -88,15 +107,16 @@ def main():
     if args.command in ("demo", "live-demo"):
         credentials = {}
         users = {}
+        configured_password = os.environ.get("COLDCHAIN_DEMO_PASSWORD")
+        stable = {} if configured_password else demo_passwords([t["id"] + ".demo" for t in config["tenants"]])
         for tenant in config["tenants"]:
             username = tenant["id"] + ".demo"
-            configured_password = os.environ.get("COLDCHAIN_DEMO_PASSWORD")
-            password = configured_password or secrets.token_urlsafe(18)
+            password = configured_password or stable[username]
             users[username] = {"tenant": tenant["id"], "password_hash": hash_password(password)}
             if configured_password:
                 print("Browser password was supplied via COLDCHAIN_DEMO_PASSWORD.", flush=True)
             else:
-                print(f"Generated browser password: {password}", flush=True)
+                print(f"Browser password (from {DEMO_PASSWORDS_FILE}): {password}", flush=True)
             print(f"Browser login ({tenant['name']}): username={username}  password={password}", flush=True)
             key = secrets.token_urlsafe(24)
             credentials[key] = {"role": "operator", "tenant": tenant["id"]}

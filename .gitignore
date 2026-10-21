@@ -17,3 +17,4 @@ frontend/coverage/
 /data/
 
 frontend/.next-*/
+config/demo-passwords.local.json

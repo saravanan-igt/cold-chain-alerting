@@ -28,6 +28,8 @@ def require_free_port(port: int) -> None:
 
 def find_node() -> str:
     candidates = [
+        ROOT / ".runtime/node/node.exe",
+        ROOT / ".runtime/node/bin/node",
         ROOT / ".runtime/node/node_modules/node/bin/node.exe",
         ROOT / ".runtime/node/node_modules/node/bin/node",
     ]
@@ -139,7 +141,7 @@ def main() -> int:
         frontend = start([node, str(next_cli), "dev", "--hostname", "127.0.0.1", "--port", str(args.frontend_port)], ROOT / "frontend", env)
         processes.append(frontend)
         wait_ready(frontend, frontend_url, "Frontend", args.startup_timeout)
-        print("  Use the browser password printed by the backend during startup.", flush=True)
+        print("  Browser passwords are stable: see config/demo-passwords.local.json (edit to change).", flush=True)
         print(f"\nColdline is ready!\n  Frontend: {frontend_url}\n  API docs: {backend_url}/docs\n"
               "  Login: username=nimbus.demo  password=nimbus123\n"
               "  Press Ctrl+C here to stop both services.\n", flush=True)

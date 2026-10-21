@@ -14,7 +14,7 @@ Production hardening (completed):
 
 6. Transactional notification outbox and worker. Acceptance: outbox commits/rolls back with the incident; signed webhook, Slack-format and log channels; retry with backoff, dead-letter and operator retry tested.
 7. Acknowledgement and escalation. Acceptance: idempotent acknowledgement with audit timeline; escalation levels fire once each until acknowledged; dashboard shows acknowledgement, timeline and deliveries.
-8. Multi-instance readiness. Acceptance: PostgreSQL URL support with per-truck row locks, SKIP LOCKED claims and advisory-locked migration/provisioning; database-backed sessions shared by two app instances in tests; schema v1?v2 migration.
+8. Multi-instance readiness. Acceptance: PostgreSQL URL support with per-truck row locks, SKIP LOCKED claims and advisory-locked migration/provisioning; database-backed sessions shared by two app instances in tests; schema v1→v2 migration.
 9. Identity, observability and recovery. Acceptance: OIDC JWT verification (asymmetric algorithms only, tenant and role claims); managed-identity database tokens; JSON logs, request IDs, `/metrics`, `/ready`; SQLite backup/verify/restore with manifest; non-root container and PostgreSQL/worker Compose profile.
 10. Demo alert simulation. Acceptance: rule-relative genuine and non-genuine scenarios injected from the dashboard or API, with expected-versus-observed verdicts; steady baseline option.
 

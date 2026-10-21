@@ -17,6 +17,8 @@ cd ..
 
 Use `npm.cmd` if the PowerShell execution policy blocks `npm`. On macOS/Linux use `.venv/bin/python` and `npm`.
 
+If `run.py` reports *Node.js 24.15+ is required*, either install Node 24.15+ on PATH or extract the official Node 24 zip (for Windows, `node-v24.x.x-win-x64.zip` from nodejs.org) so that `.runtime\node\node.exe` exists. The launcher checks that location first; `.runtime/` is git-ignored.
+
 ## 2. Run the application
 
 **Recommended for the demo.** A steady fleet means only the patterns you trigger cross the threshold:
@@ -35,7 +37,7 @@ Open **http://127.0.0.1:3000**. Use a new `--db` filename for each clean run.
 
 Open **http://127.0.0.1:8000**.
 
-Sign in as **`nimbus.demo`** with the password printed in the terminal; it is regenerated on each launch. The terminal also prints operator and device keys for API use.
+Sign in as **`nimbus.demo`** or **`alpine.demo`**. Passwords are generated on the first launch, saved to `config/demo-passwords.local.json` (git-ignored) and reused afterwards. They are also printed in the terminal. To choose your own, edit that file (minimum 8 characters) and restart. Operator and device API keys are still regenerated on each launch.
 
 Other modes:
 

@@ -327,3 +327,15 @@ def test_demo_scenario_api_and_player(tmp_path, monkeypatch):
     with store.engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(incidents)).scalar() == 1
     store.engine.dispose()
+
+def test_demo_passwords_are_generated_once_and_reused(tmp_path, monkeypatch):
+    from backend import cli
+    target = tmp_path / "demo-passwords.local.json"
+    monkeypatch.setattr(cli, "DEMO_PASSWORDS_FILE", target)
+    first = cli.demo_passwords(["nimbus.demo", "alpine.demo"])
+    assert cli.demo_passwords(["nimbus.demo", "alpine.demo"]) == first
+    target.write_text('{"nimbus.demo": "chosen-pass-1", "alpine.demo": "chosen-pass-2"}', encoding="utf-8")
+    assert cli.demo_passwords(["nimbus.demo"])["nimbus.demo"] == "chosen-pass-1"
+    target.write_text('{"nimbus.demo": "short"}', encoding="utf-8")
+    with pytest.raises(SystemExit):
+        cli.demo_passwords(["nimbus.demo"])
